@@ -588,69 +588,91 @@ export const UI = {
             }
         });
 
-        if(battleStore.enemy && battleStore.enemy.maxHp) {
-            const eHpPct = (battleStore.enemy.hp / battleStore.enemy.maxHp) * 100;
-            const eHpBar = document.getElementById('e-hp-bar');
-            if(eHpBar) eHpBar.style.width = eHpPct + '%';
+        // 清空敌人容器并重新生成 (简化逻辑: 每次 update 都重绘敌人)
+        // 实际上为了性能应该只更新，但为了 Step 1 兼容多敌人渲染，先全量刷新
+        const enemyContainer = document.querySelector('.enemy-container');
+        if(enemyContainer && battleStore.enemies.length > 0) {
+            enemyContainer.innerHTML = '';
             
-            const eHpText = document.getElementById('e-hp-text');
-            if(eHpText) eHpText.innerText = `${battleStore.enemy.hp}/${battleStore.enemy.maxHp}`;
-            
-            const eName = document.getElementById('e-name');
-            if(eName) eName.innerText = battleStore.enemy.name;
-            
-            const eSprite = document.getElementById('sprite-enemy');
-            if(eSprite) {
-                // 如果正在播放特殊的序列帧动画，不使用 JS 强制设置背景图，允许 CSS 动画接管
-                const hasSpecialAnim = eSprite.classList.contains('anim-knight-attack') || 
-                                     eSprite.classList.contains('anim-dancer-attack') || 
-                                     eSprite.classList.contains('anim-demon-cast');
-                                     
-                if (!hasSpecialAnim) {
-                    eSprite.style.backgroundImage = `url('${battleStore.enemy.sprite}')`;
-                } else {
-                    // 清除内联样式，确保 CSS keyframes 生效
-                    eSprite.style.backgroundImage = '';
+            battleStore.enemies.forEach((enemy, idx) => {
+                const eDiv = document.createElement('div');
+                eDiv.className = 'enemy-unit';
+                
+                // 逻辑判断：如果正在死亡，加 .dead (播放动画)；如果已经死透了，加 .dead-static (保持消失)
+                if (enemy.isDying) {
+                    eDiv.classList.add('dead');
+                } else if (enemy.hp <= 0) {
+                    eDiv.classList.add('dead-static');
                 }
-            }
-            
-            const intentEl = document.getElementById('e-intent');
-            if(intentEl) {
-                if(battleStore.enemy.stunned) {
-                    intentEl.innerHTML = '<span class="intent-icon">❄️</span> 无法行动';
-                    if(eSprite) eSprite.classList.add('frozen-effect');
+                
+                eDiv.id = `enemy-${idx}`;
+                
+                // 构建敌人内部 DOM
+                // 注意：为了保持原有的 CSS 动画和样式，我们需要复用 id="sprite-enemy" 吗？
+                // 原有的 CSS 动画是绑定在 .sprite-enemy 或者是 #sprite-enemy 上的。
+                // 我们应该使用 class="sprite-enemy" 并给每个敌人唯一 ID
+                
+                const hpPct = (enemy.hp / enemy.maxHp) * 100;
+                
+                // Status Row
+                let statusHtml = '';
+                if(enemy.block > 0) {
+                     statusHtml += `<div style="display:flex;align-items:center;background:rgba(0,0,0,0.8);border-radius:4px;padding:4px 8px;margin-right:5px;"><img src="assets/UI/block.png" class="ui-icon" style="width:28px;height:28px;" onerror="this.style.display='none'"> <span style="font-weight:bold;margin-left:6px;color:#3498db;font-size:1.2em;">${enemy.block}</span></div>`;
+                }
+                if(enemy.buffs.vuln > 0) statusHtml += `<div style="display:flex;align-items:center;background:rgba(0,0,0,0.8);border-radius:4px;padding:4px 8px;margin-right:5px;"><img src="assets/UI/Vulnerable.png" class="ui-icon" style="width:28px;height:28px;" onerror="this.style.display='none'"> <span style="font-weight:bold;margin-left:6px;color:#e67e22;font-size:1.2em;">${enemy.buffs.vuln}</span></div>`;
+                if(enemy.buffs.res > 0) statusHtml += `<div class="status-icon" style="background:#9b59b6">共鸣 ${enemy.buffs.res}</div>`; 
+                if(enemy.buffs.str > 0) statusHtml += `<div class="status-icon" style="background:#e74c3c">力量 ${enemy.buffs.str}</div>`;
+
+                // Intent
+                let intentHtml = '';
+                if(enemy.stunned) {
+                    intentHtml = '<span class="intent-icon">❄️</span> 无法行动';
                 } else {
-                    const iIcon = battleStore.enemy.intent.icon || 'assets/UI/attack.png';
-                    let iVal = battleStore.enemy.intent.val > 0 ? battleStore.enemy.intent.val : '';
-                    
-                    // Show strength bonus for all attack types
+                    const iIcon = enemy.intent.icon || 'assets/UI/attack.png';
+                    let iVal = enemy.intent.val > 0 ? enemy.intent.val : '';
                     const atkTypes = ['atk', 'atk_heavy', 'atk_vuln'];
                     let isBuffed = false;
-                    if(atkTypes.includes(battleStore.enemy.intent.type) && iVal !== '') {
-                        const str = battleStore.enemy.buffs.str || 0;
+                    if(atkTypes.includes(enemy.intent.type) && iVal !== '') {
+                        const str = enemy.buffs.str || 0;
                         if (str > 0) isBuffed = true;
                         iVal = parseInt(iVal) + str;
                     }
-                    // 添加 onerror
                     const valHtml = isBuffed ? `<span style="color:#e74c3c; font-weight:bold; text-shadow:0 0 5px rgba(231,76,60,0.5);">${iVal}</span>` : iVal;
-                    intentEl.innerHTML = `<img src="${iIcon}" class="intent-icon-img" onerror="this.src='assets/UI/attack.png'"> ${valHtml}`;
-                    if(eSprite) eSprite.classList.remove('frozen-effect');
+                    intentHtml = `<img src="${iIcon}" class="intent-icon-img" onerror="this.src='assets/UI/attack.png'"> ${valHtml}`;
                 }
-            }
 
-            const sRow = document.getElementById('e-status');
-            if(sRow) {
-                sRow.innerHTML = '';
-                // 护盾显示：移到状态栏或者血条旁。这里放在状态栏里比较清晰
-                if(battleStore.enemy.block > 0) {
-                     sRow.innerHTML += `<div style="display:flex;align-items:center;background:rgba(0,0,0,0.8);border-radius:4px;padding:4px 8px;margin-right:5px;"><img src="assets/UI/block.png" class="ui-icon" style="width:28px;height:28px;" onerror="this.style.display='none'"> <span style="font-weight:bold;margin-left:6px;color:#3498db;font-size:1.2em;">${battleStore.enemy.block}</span></div>`;
-                }
+                // Sprite Style
+                // 暂时保留 Step 1 的单个敌人兼容 ID，为了不打破 CSS 选择器
+                // 但如果有多个敌人，ID 必须唯一。
+                // 现有的 JS 动画逻辑 (battle.js) 也是通过 getElementById('sprite-enemy') 寻找
+                // 这是一个兼容性痛点。
+                // 方案：如果是第 0 个敌人，我们给它加上 id="sprite-enemy" 以保持兼容。
+                // 后续 Step 3 我们再全面重构 battle.js 的动画查找逻辑。
+                const spriteId = (idx === 0) ? 'sprite-enemy' : `sprite-enemy-${idx}`;
                 
-                // 添加 onerror
-                if(battleStore.enemy.buffs.vuln > 0) sRow.innerHTML += `<div style="display:flex;align-items:center;background:rgba(0,0,0,0.8);border-radius:4px;padding:4px 8px;margin-right:5px;"><img src="assets/UI/Vulnerable.png" class="ui-icon" style="width:28px;height:28px;" onerror="this.style.display='none'"> <span style="font-weight:bold;margin-left:6px;color:#e67e22;font-size:1.2em;">${battleStore.enemy.buffs.vuln}</span></div>`;
-                if(battleStore.enemy.buffs.res > 0) sRow.innerHTML += `<div class="status-icon" style="background:#9b59b6">共鸣 ${battleStore.enemy.buffs.res}</div>`; 
-                if(battleStore.enemy.buffs.str > 0) sRow.innerHTML += `<div class="status-icon" style="background:#e74c3c">力量 ${battleStore.enemy.buffs.str}</div>`;
-            }
+                let spriteStyle = `background-image:url('${enemy.sprite}')`;
+                const eSprite = document.getElementById(spriteId);
+                // 如果当前 DOM 存在且有动画 class，不要重置 style
+                if (eSprite && (eSprite.classList.contains('anim-knight-attack') || 
+                     eSprite.classList.contains('anim-dancer-attack') || 
+                     eSprite.classList.contains('anim-demon-cast'))) {
+                     spriteStyle = '';
+                }
+
+                eDiv.innerHTML = `
+                    <div class="status-row">${statusHtml}</div>
+                    <div class="intent-badge">${intentHtml}</div>
+                    <div id="${spriteId}" class="sprite-enemy enemy-idle-breathe ${enemy.stunned ? 'frozen-effect' : ''}" 
+                         style="${spriteStyle}" 
+                         onclick="battle.targetEnemy(${idx})"></div>
+                    <div class="enemy-hp-box">
+                        <img src="assets/UI/hp_icon.png" class="ui-icon" style="width:28px;height:28px;"> 
+                        <span style="color:#fff; font-weight:bold; font-size:1.4em; text-shadow:0 0 5px #000;">${enemy.hp}/${enemy.maxHp}</span>
+                    </div>
+                    <div class="enemy-name">${enemy.name}</div>
+                `;
+                enemyContainer.appendChild(eDiv);
+            });
         }
 
         const btnEnd = document.getElementById('btn-end');
@@ -1076,20 +1098,33 @@ export const UI = {
         path.setAttribute('d', d);
         
         // 简单的目标高亮逻辑 (可选)
-        // 检查鼠标是否悬停在敌人身上
-        const enemyEl = document.getElementById('sprite-enemy');
-        if (enemyEl) {
-            const rect = enemyEl.getBoundingClientRect();
-            if (x2 >= rect.left && x2 <= rect.right && y2 >= rect.top && y2 <= rect.bottom) {
-                // 此时可以高亮敌人
-                enemyEl.style.filter = "brightness(1.5) drop-shadow(0 0 10px red)";
-                path.setAttribute('stroke', '#ffcc00'); // 箭头变黄
-                document.getElementById('arrowhead').children[0].setAttribute('fill', '#ffcc00');
-            } else {
-                enemyEl.style.filter = ""; // 复原
-                path.setAttribute('stroke', '#ff0000');
-                document.getElementById('arrowhead').children[0].setAttribute('fill', '#ff0000');
-            }
+        // 检查鼠标是否悬停在任意敌人身上
+        // 遍历所有 .sprite-enemy
+        const enemies = document.querySelectorAll('.sprite-enemy');
+        let hoverTarget = null;
+        
+        enemies.forEach((el, idx) => {
+             const rect = el.getBoundingClientRect();
+             if (x2 >= rect.left && x2 <= rect.right && y2 >= rect.top && y2 <= rect.bottom) {
+                 hoverTarget = el;
+                 // 设置箭头为黄色高亮
+                 el.style.filter = "brightness(1.5) drop-shadow(0 0 10px red)";
+                 // 存储目标索引到 dataset 或者 全局变量，以便松开鼠标时 battle.js 获取
+                 // 更好的方式：battle.js 的 targetEnemy(idx) 接收 idx
+                 // 我们可以在 mouseup 时检测鼠标位置。但为了视觉反馈，我们这里只做高亮
+                 document.body.setAttribute('data-hover-enemy-idx', idx);
+             } else {
+                 el.style.filter = "";
+             }
+        });
+
+        if (hoverTarget) {
+            path.setAttribute('stroke', '#ffcc00'); // 箭头变黄
+            document.getElementById('arrowhead').children[0].setAttribute('fill', '#ffcc00');
+        } else {
+            path.setAttribute('stroke', '#ff0000');
+            document.getElementById('arrowhead').children[0].setAttribute('fill', '#ff0000');
+            document.body.removeAttribute('data-hover-enemy-idx');
         }
     },
 
@@ -1098,8 +1133,8 @@ export const UI = {
         if (layer) layer.style.display = 'none';
         
         // 顺便清理敌人高亮
-        const enemyEl = document.getElementById('sprite-enemy');
-        if (enemyEl) enemyEl.style.filter = "";
+        document.querySelectorAll('.sprite-enemy').forEach(el => el.style.filter = "");
+        document.body.removeAttribute('data-hover-enemy-idx');
     }
 };
 

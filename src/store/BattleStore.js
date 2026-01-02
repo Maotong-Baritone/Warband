@@ -29,7 +29,7 @@ class BattleStore {
             
             // 实体 (保留)
             allies: keptAllies,
-            enemy: null, 
+            enemies: [], 
             
             // 卡牌区 (保留Deck，清空手牌/弃牌)
             deck: keptDeck,
@@ -63,7 +63,8 @@ class BattleStore {
     get turnCount() { return this.state.turnCount; }
     get mana() { return this.state.mana; }
     get allies() { return this.state.allies; }
-    get enemy() { return this.state.enemy; }
+    get enemies() { return this.state.enemies; }
+    get enemy() { return this.state.enemies[0]; } // Compatibility
     get deck() { return this.state.deck; }
     get hand() { return this.state.hand; }
     get discard() { return this.state.discard; }
@@ -80,9 +81,9 @@ class BattleStore {
         this.notify('allies');
     }
 
-    setEnemy(e) {
-        this.state.enemy = e;
-        this.notify('enemy');
+    setEnemies(list) {
+        this.state.enemies = list;
+        this.notify('enemies');
     }
 
     setDeck(cards) {

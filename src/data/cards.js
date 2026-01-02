@@ -26,7 +26,7 @@ export const DUO_CARDS = [
     { id: 104, name:"弦乐柔板", cost:1, req:['violinist', 'cellist'], val:30, desc:"前排获得 {val} 护盾并反伤。", img:PATHS.cards + 'adagio.png', type:'duo', 
       effects: [
           { type: 'block', val: 30, scale: true, target: 'front', vfx: 'shield' },
-          { type: 'custom', fn: (b, c, m) => { let f=b.getFrontAlly(); if(f) b.dmgEnemy(f.block); } }
+          { type: 'custom', fn: (b, c, val, mult, targetIdx) => { let f=b.getFrontAlly(); if(f) b.dmgEnemy(f.block, false, targetIdx); } }
       ]
     },
     { id: 105, name:"狂欢节", cost:2, req:['pianist', 'cellist'], val:8, desc:"随机 {val} 伤害 x 5 次。", img:PATHS.cards + 'carnival.png', type:'duo', 
@@ -66,13 +66,14 @@ export const CARDS = {
           }}]
     },
     30: { name:"尾声", cost:1, type:'atk', val:6, tag:'atk', eff:'hand_scale', img:PATHS.cards + 'weisheng.png', desc:"{val} 伤害 (每张手牌+3伤害)", owner:'pianist',
-          effects: [{ type: 'custom', fn: (b, c, val, mult) => {
+          effects: [{ type: 'custom', fn: (b, c, val, mult, targetIdx) => {
               // val 已经是 6 * mult
               // 我们需要 (6 + hand*3) * mult = 6*mult + hand*3*mult
               // 或者更简单的：val + (hand * 3 * mult)
               let bonus = Math.ceil(b.hand.length * 3 * mult);
-              b.dmgEnemy(val + bonus);
-              window.UI.spawnVFX('heavy_hit', 'sprite-enemy');
+              b.dmgEnemy(val + bonus, false, targetIdx);
+              const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
+              window.UI.spawnVFX('heavy_hit', targetId);
           }}]
     },
     
@@ -102,12 +103,13 @@ export const CARDS = {
          ]
     },
     17: { name:"渐强", cost:1, type:'atk', val:6, tag:'atk', eff:'crescendo', img:PATHS.cards + 'jianqiang.png', desc:"{val} 伤害(随本场攻击次数成长)", owner:'common',
-          effects: [{ type: 'custom', fn: (b, c, val, mult) => {
+          effects: [{ type: 'custom', fn: (b, c, val, mult, targetIdx) => {
               // val 是 6 * mult
               // 我们需要 (6 + stacks) * mult = val + stacks * mult
               let bonus = Math.ceil(b.crescendoStacks * mult);
-              b.dmgEnemy(val + bonus);
-              window.UI.spawnVFX('soundwave', 'sprite-enemy');
+              b.dmgEnemy(val + bonus, false, targetIdx);
+              const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
+              window.UI.spawnVFX('soundwave', targetId);
           }}]
     },
     18: { name:"变奏", cost:1, type:'skill', val:0, tag:'buff', eff:'variation', img:PATHS.cards + 'bianzou.png', desc:"下一张牌效果 +50%", owner:'common',
@@ -124,14 +126,17 @@ export const CARDS = {
          effects: [{ type: 'dmg', val: 6, scale: true, hits: 2, vfx: 'slash' }]
     },
     20: { name:"双音", cost:1, type:'atk', val:4, tag:'atk', img:PATHS.cards + 'shuangyin.png', desc:"造成 3 + 负面状态层数次 {val} 点伤害", owner:'violinist',
-          effects: [{ type: 'custom', fn: (b, c, val, mult) => {
-              const debuffCount = (b.enemy.buffs.vuln > 0 ? 1 : 0) + (b.enemy.stunned ? 1 : 0);
+          effects: [{ type: 'custom', fn: (b, c, val, mult, targetIdx) => {
+              const target = b.enemies[targetIdx];
+              if (!target) return;
+              const debuffCount = (target.buffs.vuln > 0 ? 1 : 0) + (target.stunned ? 1 : 0);
               let hits = 3 + debuffCount;
               if (gameStore.relics.includes('liszt_bullet')) hits++;
+              const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
               for(let i=0; i<hits; i++) {
                   b.tm.add(() => {
-                      b.dmgEnemy(val); // val 已经是 4 * mult
-                      window.UI.spawnVFX('slash', 'sprite-enemy');
+                      b.dmgEnemy(val, false, targetIdx); // val 已经是 4 * mult
+                      window.UI.spawnVFX('slash', targetId);
                   }, i * 150);
               }
           }}]
@@ -150,20 +155,23 @@ export const CARDS = {
              { type: 'status', id: 'res', val: 1, msg: '共鸣+1', delay: 350 }
          ]
     },
-    9: { name:"共鸣", cost:1, type:'buff', val:3, tag:'buff', img:PATHS.cards + 'gongming.png', desc:"{val} 层共鸣", owner:'vocalist',
+    9: { name:"共鸣", cost:1, type:'buff', val:3, tag:'buff', img:PATHS.cards + 'gongming.png', desc:"{val} 层共鸣 (全体)", owner:'vocalist',
          effects: [
-             { type: 'status', id: 'res', val: 3, scale: true, vfx: 'dissonance' }
+             { type: 'status', id: 'res', val: 3, target: 'all', scale: true, vfx: 'dissonance' }
          ]
     },
     10: { name:"咏叹调", cost:2, type:'spec', val:10, tag:'atk', img:PATHS.cards + 'yongtandiao.png', desc:"引爆共鸣(层数x{val})", owner:'vocalist',
-          effects: [{ type: 'custom', fn: (b, c, val, mult) => {
+          effects: [{ type: 'custom', fn: (b, c, val, mult, targetIdx) => {
+              const target = b.enemies[targetIdx];
+              if (!target) return;
               // val 已经是 10 * mult
-              let dmg = b.enemy.buffs.res * val;
-              b.dmgEnemy(dmg);
-              b.enemy.buffs.res = 0;
-              window.UI.log(`[引爆] 消耗共鸣造成 ${dmg} 伤害`, 'dmg');
+              let dmg = target.buffs.res * val;
+              b.dmgEnemy(dmg, false, targetIdx);
+              target.buffs.res = 0;
+              window.UI.log(`[引爆] 消耗 ${target.name} 共鸣造成 ${dmg} 伤害`, 'dmg');
               window.UI.shake();
-              window.UI.spawnVFX('soundwave', 'sprite-enemy');
+              const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
+              window.UI.spawnVFX('soundwave', targetId);
           }}]
     },
 
@@ -172,11 +180,12 @@ export const CARDS = {
           effects: [{ type: 'block', val: 12, scale: true, vfx: 'shield' }]
     },
     12: { name:"重奏", cost:2, type:'spec', val:100, tag:'atk', img:PATHS.cards + 'chongzou.png', desc:"造成等同于护盾 {val}% 的伤害", owner:'cellist',
-          effects: [{ type: 'custom', fn: (b, c, val, mult) => {
+          effects: [{ type: 'custom', fn: (b, c, val, mult, targetIdx) => {
               let dmg = Math.ceil(c.block * mult); // 100% 护盾值 * 倍率
-              b.dmgEnemy(dmg);
+              b.dmgEnemy(dmg, false, targetIdx);
               window.UI.shake();
-              window.UI.spawnVFX('heavy_hit', 'sprite-enemy');
+              const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
+              window.UI.spawnVFX('heavy_hit', targetId);
           }}]
     },
     13: { name:"琴弦壁垒", cost:1, type:'def', val:5, tag:'def', img:PATHS.cards + 'qinxian.png', desc:"获得 {val} 护盾，抽一张牌", owner:'cellist',
@@ -219,12 +228,17 @@ export const CARDS = {
     22: { name:"缄默", cost:1, type:'atk', val:8, tag:'atk', eff:'weaken', img:PATHS.cards + 'jianmo.png', desc:"{val} 伤害，本回合敌人力量 -{str}", owner:'conductor',
           effects: [
               { type: 'dmg', val: 8, scale: true, vfx: 'dissonance' },
-              { type: 'custom', fn: (b, c, val, mult) => {
+              { type: 'custom', fn: (b, c, val, mult, targetIdx) => {
+                  const target = b.enemies[targetIdx];
+                  if (!target) return;
                   const level = gameStore.getCardLevel(22);
                   const debuffVal = 2 + level;
-                  b.enemy.buffs.str -= debuffVal;
-                  b.tempStrDebuff += debuffVal;
-                  window.UI.floatText(`力量 -${debuffVal}`, 'sprite-enemy', '#bdc3c7');
+                  target.buffs.str -= debuffVal;
+                  b.tempStrDebuff += debuffVal; // Note: tempStrDebuff is global in BattleStore, maybe it should be per enemy?
+                  // Currently, battle.js enemyAction restores it to ALL enemies. 
+                  // Let's keep it simple or make it per enemy later.
+                  const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
+                  window.UI.floatText(`力量 -${debuffVal}`, targetId, '#bdc3c7');
               }}
           ]
     },
@@ -237,13 +251,14 @@ export const CARDS = {
 
     // Flutist
     24: { name:"花舌", cost:0, type:'atk', val:3, tag:'atk', img:PATHS.cards + 'huashe.png', desc:"{val} 伤害 (次数=本回合已耗灵感)", owner:'flutist',
-          effects: [{ type: 'custom', fn: (b, c, val, mult) => {
+          effects: [{ type: 'custom', fn: (b, c, val, mult, targetIdx) => {
               let hits = Math.max(1, b.manaSpentTurn);
               if (gameStore.relics.includes('liszt_bullet')) hits++;
+              const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
               for(let i=0; i<hits; i++) {
                   b.tm.add(() => {
-                      b.dmgEnemy(val); // val 已经是 3 * mult
-                      window.UI.spawnVFX('Multi-Thrust', 'sprite-enemy');
+                      b.dmgEnemy(val, false, targetIdx); // val 已经是 3 * mult
+                      window.UI.spawnVFX('Multi-Thrust', targetId);
                   }, i * 150);
               }
           }}]

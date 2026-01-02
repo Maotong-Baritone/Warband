@@ -286,84 +286,90 @@ export const game = {
         this.mapSelect();
     },
 
-    startLevel(type, forceEnemyKey = null) {
-        try {
-            window.battle.reset();
-            window.battle.allies.forEach(a => { if(a.role==='cellist') a.block = 8; });
-            if(gameStore.relics.includes('baton')) window.battle.manaData.current++;
-
-            let enemyType = ENEMIES.noise;
-            let hpMult = 1;
-            
-            // 强制指定敌人 (Debug模式)
-            if (forceEnemyKey && ENEMIES[forceEnemyKey]) {
-                enemyType = ENEMIES[forceEnemyKey];
-                type = 'battle'; // 默认为普通战逻辑，除非是Boss
-                if (forceEnemyKey === 'silence') { type = 'boss'; hpMult = 3; }
-                else if (['discord', 'shihengwuzhe'].includes(forceEnemyKey)) { type = 'elite'; hpMult = 1.8; }
-                else { hpMult = 1; }
+        startLevel(type, forceEnemyKeys = null) {
+            try {
+                window.battle.reset();
+                window.battle.allies.forEach(a => { if(a.role==='cellist') a.block = 8; });
+                if(gameStore.relics.includes('baton')) window.battle.manaData.current++;
+    
+                let enemiesToSpawn = [];
+                let hpMult = 1;
                 
-                events.emit('stop-bgm');
-                // 简单的BGM映射
-                if (forceEnemyKey === 'silence') events.emit('play-bgm', 'assets/BGM/Scythian Suite.mp3');
-                else if (forceEnemyKey === 'shihengwuzhe') events.emit('play-bgm', 'assets/BGM/Shostakovich_String Quartet.mp3');
-                else if (forceEnemyKey === 'discord') events.emit('play-bgm', 'assets/BGM/Mahler - Symphony.mp3');
-                else if (forceEnemyKey === 'changshiban') events.emit('play-bgm', 'assets/BGM/bin ich nun frei.m4a');
-                else events.emit('play-bgm', 'assets/BGM/Bruckner.mp3');
+                // 强制指定敌人 (Debug模式 / 包含多敌人支持)
+                if (forceEnemyKeys) {
+                    const keys = Array.isArray(forceEnemyKeys) ? forceEnemyKeys : [forceEnemyKeys];
+                    keys.forEach(key => {
+                        if (ENEMIES[key]) {
+                            enemiesToSpawn.push({ data: ENEMIES[key], key });
+                        }
+                    });
+                    
+                    type = (type === 'debug') ? 'battle' : type; 
+                    
+                    // 简单的 BGM 映射 (取第一个敌人)
+                    const firstKey = keys[0];
+                    events.emit('stop-bgm');
+                    if (firstKey === 'silence') events.emit('play-bgm', 'assets/BGM/Scythian Suite.mp3');
+                    else if (firstKey === 'shihengwuzhe') events.emit('play-bgm', 'assets/BGM/Shostakovich_String Quartet.mp3');
+                    else events.emit('play-bgm', 'assets/BGM/Bruckner.mp3');
+                }
+                else if (type === 'boss') { 
+                    enemiesToSpawn.push({ data: ENEMIES.silence, key: 'silence' });
+                    hpMult = 3; 
+                    events.emit('play-bgm', 'assets/BGM/Scythian Suite.mp3'); 
+                }
+                else if (type === 'elite') { 
+                    const elitePool = ['discord', 'shihengwuzhe'];
+                    const key = elitePool[Math.floor(Math.random() * elitePool.length)];
+                    enemiesToSpawn.push({ data: ENEMIES[key], key });
+                    hpMult = 1.8; 
+                    events.emit('stop-bgm'); 
+                    if (key === 'shihengwuzhe') events.emit('play-bgm', 'assets/BGM/Shostakovich_String Quartet.mp3');
+                    else if (key === 'discord') events.emit('play-bgm', 'assets/BGM/Mahler - Symphony.mp3');
+                }
+                else { 
+                    const normalPool = ['noise', 'bayinhe', 'changshiban'];
+                    const key = normalPool[Math.floor(Math.random() * normalPool.length)];
+                    enemiesToSpawn.push({ data: ENEMIES[key], key });
+                    hpMult = 1; 
+                    events.emit('stop-bgm'); 
+                    if (key === 'changshiban') events.emit('play-bgm', 'assets/BGM/bin ich nun frei.m4a');
+                    else events.emit('play-bgm', 'assets/BGM/Bruckner.mp3'); 
+                }
+    
+                const enemyList = enemiesToSpawn.map(item => {
+                    const e = item.data;
+                    const hpBase = (30 + gameStore.level * 8) * hpMult;
+                    return { 
+                        type: type, name: e.name, sprite: e.sprite,
+                        hp: Math.floor(hpBase * e.hpScale), 
+                        maxHp: Math.floor(hpBase * e.hpScale), 
+                        block: 0, 
+                        intent: {type:'atk', val:0}, stunned:false, buffs:{vuln:0, res:0, str:0}, acts: e.act 
+                    };
+                });
+    
+                battleStore.setEnemies(enemyList);
+    
+                if (typeof window.battle.planEnemy === 'function') {
+                    window.battle.planEnemy();
+                } else {
+                    throw new Error("window.battle.planEnemy is missing!");
+                }
+    
+                UI.switchScene('scene-battle');
+                window.battle.phase = 'PREPARE';
+                events.emit('render-battlefield');
+                events.emit('update-ui');
+                document.getElementById('prep-ui').style.display = 'block';
+                document.getElementById('hand').style.display = 'none';
+                document.getElementById('btn-end').style.display = 'none';
+                document.getElementById('party-container').classList.add('interactive');
+            } catch (e) {
+                console.error("Start Level Error:", e);
+                events.emit('toast', "进入战斗失败，请查看控制台");
             }
-            else if (type === 'boss') { 
-                enemyType = ENEMIES.silence; 
-                hpMult = 3; 
-                events.emit('play-bgm', 'assets/BGM/Scythian Suite.mp3'); 
-            }
-            else if (type === 'elite') { 
-                const elitePool = ['discord', 'shihengwuzhe'];
-                const key = elitePool[Math.floor(Math.random() * elitePool.length)];
-                enemyType = ENEMIES[key]; 
-                hpMult = 1.8; 
-                events.emit('stop-bgm'); 
-                if (key === 'shihengwuzhe') events.emit('play-bgm', 'assets/BGM/Shostakovich_String Quartet.mp3');
-                else if (key === 'discord') events.emit('play-bgm', 'assets/BGM/Mahler - Symphony.mp3');
-            }
-            else { 
-                const normalPool = ['noise', 'bayinhe', 'changshiban'];
-                const key = normalPool[Math.floor(Math.random() * normalPool.length)];
-                enemyType = ENEMIES[key];
-                hpMult = 1; 
-                events.emit('stop-bgm');   
-                if (key === 'changshiban') events.emit('play-bgm', 'assets/BGM/bin ich nun frei.m4a');
-                else events.emit('play-bgm', 'assets/BGM/Bruckner.mp3'); 
-            }
-
-            const hpBase = (30 + gameStore.level * 8) * hpMult;
-            battleStore.setEnemy({ 
-                type: type, name: enemyType.name, sprite: enemyType.sprite,
-                hp: Math.floor(hpBase * enemyType.hpScale), 
-                maxHp: Math.floor(hpBase * enemyType.hpScale), 
-                block: 0, 
-                intent: {type:'atk', val:0}, stunned:false, buffs:{vuln:0, res:0, str:0}, acts: enemyType.act 
-            });
-
-            if (typeof window.battle.planEnemy === 'function') {
-                window.battle.planEnemy();
-            } else {
-                throw new Error("window.battle.planEnemy is missing!");
-            }
-
-            UI.switchScene('scene-battle');
-            window.battle.phase = 'PREPARE';
-            events.emit('render-battlefield');
-            events.emit('update-ui');
-            document.getElementById('prep-ui').style.display = 'block';
-            document.getElementById('hand').style.display = 'none';
-            document.getElementById('btn-end').style.display = 'none';
-            document.getElementById('party-container').classList.add('interactive');
-        } catch (e) {
-            console.error("Start Level Error:", e);
-            events.emit('toast', "进入战斗失败，请查看控制台");
-        }
-    },
-
+        },
     recruit(key) {
         if(gameStore.partyRoles.includes(key)) return;
         gameStore.recruitMember(key);
@@ -510,31 +516,120 @@ export const game = {
     },
 
     // ================= 开发者模式 =================
+    debugEnemiesQueue: [],
+
     openDebugMenu() {
         UI.switchScene('scene-debug');
-        const el = document.getElementById('debug-enemy-list');
-        el.innerHTML = '';
         
-        // 确保有默认队伍以便测试（如果从零开始）
+        // 确保有基本的 Store 状态 (如果没点过开始直接进 Debug)
         if(gameStore.partyRoles.length === 0) {
-            this.initParty('pianist', false); // 默认钢琴家领队, 不跳转
+            gameStore.initGame('pianist');
+            battleStore.reset();
+            battleStore.setAllies([ this.createAlly('pianist') ]);
+            const r = ROLES['pianist'];
+            battleStore.setDeck([...COMMON_DECK, ...r.deck]);
         }
 
+        this.renderDebugUI();
+    },
+
+    renderDebugUI() {
+        // 渲染我方当前队伍
+        const partyList = document.getElementById('debug-party-list');
+        partyList.innerHTML = '';
+        gameStore.partyRoles.forEach(roleKey => {
+            const r = ROLES[roleKey];
+            const d = document.createElement('div');
+            d.className = 'relic'; // 复用圆形图标样式
+            d.style.width = '50px'; d.style.height = '50px'; d.style.fontSize = '1.5em';
+            d.innerHTML = `<img src="${r.sprite}" style="width:100%;height:100%;object-fit:contain;filter:brightness(1.5);">`;
+            d.title = r.name;
+            partyList.appendChild(d);
+        });
+
+        // 渲染角色池
+        const rolePool = document.getElementById('debug-role-pool');
+        rolePool.innerHTML = '';
+        Object.keys(ROLES).forEach(key => {
+            if (gameStore.partyRoles.includes(key)) return;
+            const r = ROLES[key];
+            const btn = document.createElement('button');
+            btn.className = 'top-btn';
+            btn.style.fontSize = '0.8em';
+            btn.innerText = `+ ${r.name}`;
+            btn.onclick = () => { this.debugAddRole(key); };
+            rolePool.appendChild(btn);
+        });
+
+        // 渲染待战敌人队列
+        const queueEl = document.getElementById('debug-enemy-queue');
+        queueEl.innerHTML = '';
+        this.debugEnemiesQueue.forEach((enemyKey, idx) => {
+            const e = ENEMIES[enemyKey];
+            const d = document.createElement('div');
+            d.className = 'relic';
+            d.style.borderColor = '#e67e22';
+            d.innerHTML = `<img src="${e.sprite}" style="width:80%;height:80%;object-fit:contain;">`;
+            d.onclick = () => { this.debugEnemiesQueue.splice(idx, 1); this.renderDebugUI(); };
+            queueEl.appendChild(d);
+        });
+
+        // 渲染敌人候选池
+        const enemyPool = document.getElementById('debug-enemy-pool');
+        enemyPool.innerHTML = '';
         Object.keys(ENEMIES).forEach(key => {
             const e = ENEMIES[key];
-            const d = document.createElement('div');
-            d.className = 'char-card';
-            d.style.height = 'auto';
-            d.style.padding = '15px';
-            d.innerHTML = `
-                <img src="${e.sprite}" class="char-img" style="height:100px; object-fit:contain;">
-                <div style="margin-top:10px; font-weight:bold;">${e.name}</div>
-                <div style="font-size:0.8em; color:#888;">HP x ${e.hpScale}</div>
+            const btn = document.createElement('div');
+            btn.className = 'char-card';
+            btn.style.width = '100px'; btn.style.height = '120px'; btn.style.padding = '5px';
+            btn.innerHTML = `
+                <img src="${e.sprite}" style="height:60px; object-fit:contain;">
+                <div style="font-size:0.7em; margin-top:5px;">${e.name}</div>
             `;
-            d.onclick = () => {
-                this.startLevel('debug', key);
-            };
-            el.appendChild(d);
+            btn.onclick = () => { this.debugEnemiesQueue.push(key); this.renderDebugUI(); };
+            enemyPool.appendChild(btn);
         });
+    },
+
+    debugAddRole(key) {
+        if (gameStore.partyRoles.length >= 4) {
+            events.emit('toast', "队伍已满 (上限4人)");
+            return;
+        }
+        gameStore.recruitMember(key);
+        const r = ROLES[key];
+        
+        // 更新战斗 Store 中的队友
+        const currentAllies = battleStore.allies;
+        currentAllies.push(this.createAlly(key));
+        battleStore.setAllies(currentAllies);
+        
+        // 更新卡组
+        const currentDeck = battleStore.deck;
+        currentDeck.push(...r.deck);
+        battleStore.setDeck(currentDeck);
+        
+        this.renderDebugUI();
+    },
+
+    debugClearParty() {
+        gameStore.clearParty();
+        battleStore.setAllies([]);
+        battleStore.setDeck([]);
+        this.renderDebugUI();
+    },
+
+    debugStartBattle() {
+        if (gameStore.partyRoles.length === 0) {
+            events.emit('toast', "请先添加至少一名演奏者");
+            return;
+        }
+        if (this.debugEnemiesQueue.length === 0) {
+            events.emit('toast', "请先添加至少一个敌人");
+            return;
+        }
+
+        // 调用改造后的 startLevel
+        this.startLevel('debug', this.debugEnemiesQueue);
     }
 };

@@ -17,9 +17,30 @@
         </div>
 
         <div id="scene-debug" class="scene">
-            <h2 style="color:#e74c3c; margin-bottom: 20px;">开发者调试: 选择测试对象</h2>
-            <div class="char-grid" id="debug-enemy-list"></div>
-            <button class="btn btn-start" style="margin-top: 30px; background: #555;" onclick="UI.switchScene('scene-menu')">返回主菜单</button>
+            <h2 style="color:#e74c3c; margin-bottom: 20px;">开发者调试: 编组与测试</h2>
+            
+            <div class="debug-container" style="display:flex; gap:30px; padding:20px; height:70vh;">
+                <!-- 我方编组 -->
+                <div class="debug-section" style="flex:1; background:rgba(0,0,0,0.5); border-radius:10px; padding:15px; overflow-y:auto;">
+                    <h3 style="color:#4dabf7; border-bottom:1px solid #4dabf7; padding-bottom:5px;">🛡️ 我方队伍</h3>
+                    <div id="debug-party-list" style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:15px;"></div>
+                    <div id="debug-role-pool" style="display:flex; flex-wrap:wrap; gap:5px; border-top:1px solid #333; padding-top:15px;"></div>
+                    <button class="btn" style="margin-top:10px; background:#c0392b; width:100%;" onclick="game.debugClearParty()">清空队伍</button>
+                </div>
+
+                <!-- 敌方编组 -->
+                <div class="debug-section" style="flex:1; background:rgba(0,0,0,0.5); border-radius:10px; padding:15px; overflow-y:auto;">
+                    <h3 style="color:#e67e22; border-bottom:1px solid #e67e22; padding-bottom:5px;">👾 待战敌人 (点击图标移除)</h3>
+                    <div id="debug-enemy-queue" style="display:flex; flex-wrap:wrap; gap:10px; min-height:100px; margin-bottom:15px; border:1px dashed #555; padding:10px;"></div>
+                    <h3 style="color:#aaa; font-size:0.9em; border-bottom:1px solid #333; padding-bottom:5px;">➕ 添加敌人</h3>
+                    <div id="debug-enemy-pool" style="display:flex; flex-wrap:wrap; gap:5px; padding-top:10px;"></div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; display:flex; gap:20px; justify-content:center;">
+                <button class="btn btn-start" style="background: #27ae60; padding: 15px 50px;" onclick="game.debugStartBattle()">开始测试战斗</button>
+                <button class="btn btn-start" style="background: #555;" onclick="UI.switchScene('scene-menu')">返回主菜单</button>
+            </div>
         </div>
 
         <div id="scene-select" class="scene">

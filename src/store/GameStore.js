@@ -72,6 +72,12 @@ class GameStore {
         return false;
     }
 
+    clearParty() {
+        this.state.partyRoles = [];
+        this.state.cardLevels = {};
+        this.notifyChange('party');
+    }
+
     upgradeCard(cardId) {
         const current = this.state.cardLevels[cardId] || 0;
         if (current < 5) {

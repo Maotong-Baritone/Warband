@@ -14,10 +14,13 @@ export const EffectProcessor = {
             // 圣物：李斯特的子弹 (多段攻击次数+1)
             if (hits > 1 && gameStore.relics.includes('liszt_bullet')) hits += 1;
             
+            const targetIdx = eff._tempTargetIdx !== undefined ? eff._tempTargetIdx : 0;
+            const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
+
             const interval = eff.interval || 150;
             for(let i=0; i<hits; i++) {
-                context.dmgEnemy(val, eff.pierce);
-                if (eff.vfx) events.emit('spawn-vfx', { type: eff.vfx, targetId: 'sprite-enemy' });
+                context.dmgEnemy(val, eff.pierce, targetIdx);
+                if (eff.vfx) events.emit('spawn-vfx', { type: eff.vfx, targetId });
                 // 如果是多段攻击，且不是最后一下，需要等待间隔
                 if (i < hits - 1) await window.wait(interval);
             }
@@ -63,27 +66,33 @@ export const EffectProcessor = {
         },
 
         'status': async (context, eff, val, caster) => {
+            const targetIdx = eff._tempTargetIdx !== undefined ? eff._tempTargetIdx : 0;
+            const target = context.enemies[targetIdx];
+            if (!target) return;
+            const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
+
             if (eff.id === 'stunned') {
-                context.enemy.stunned = true;
-                events.emit('toast', eff.msg || "敌人被击晕!");
+                target.stunned = true;
+                events.emit('toast', eff.msg || `${target.name} 被击晕!`);
             } else if (eff.id === 'vuln') {
-                context.enemy.buffs.vuln += val;
-                events.emit('float-text', { text: `易伤+${val}`, targetId: 'sprite-enemy', color: '#e67e22' });
-                events.emit('log', { msg: `[Debuff] 敌人被施加 ${val} 层易伤`, type: 'debuff' });
+                target.buffs.vuln += val;
+                events.emit('float-text', { text: `易伤+${val}`, targetId, color: '#e67e22' });
+                events.emit('log', { msg: `[Debuff] ${target.name} 被施加 ${val} 层易伤`, type: 'debuff' });
             } else if (eff.id === 'res') {
-                context.enemy.buffs.res += val;
-                events.emit('float-text', { text: `共鸣+${val}`, targetId: 'sprite-enemy', color: '#9b59b6' });
-                events.emit('log', { msg: `[Buff] 敌人共鸣 +${val}`, type: 'buff' });
+                target.buffs.res += val;
+                events.emit('float-text', { text: `共鸣+${val}`, targetId, color: '#9b59b6' });
+                events.emit('log', { msg: `[Buff] ${target.name} 共鸣 +${val}`, type: 'buff' });
             } else if (eff.id === 'str') {
-                context.enemy.buffs.str += val;
+                target.buffs.str += val;
                 let color = val > 0 ? '#e74c3c' : '#bdc3c7';
-                events.emit('float-text', { text: `力量 ${val>0?'+':''}${val}`, targetId: 'sprite-enemy', color });
+                events.emit('float-text', { text: `力量 ${val>0?'+':''}${val}`, targetId, color });
             }
             if (eff.msg && eff.id !== 'stunned') events.emit('toast', eff.msg);
         },
 
         'vfx': async (context, eff, val, caster) => {
-            let targetId = 'sprite-enemy';
+            const targetIdx = eff._tempTargetIdx !== undefined ? eff._tempTargetIdx : 0;
+            let targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
             if (eff.target === 'self' && caster) targetId = `char-${caster.role}`;
             if (eff.target === 'front') {
                 const f = context.getFrontAlly();
@@ -99,14 +108,10 @@ export const EffectProcessor = {
 
         'custom': async (context, eff, val, caster) => {
             // custom 效果通常包含一个 fn 函数
-            // 注意：这里我们传入了原始的 context (battle对象) 以及一些辅助参数
-            // mult 参数在 execute 入口处处理，这里 custom 的 val 已经是计算过的值，
-            // 但有些 custom 逻辑可能需要原始倍率（比如变奏），
-            // 这是一个权衡。为了保持兼容性，我们假设 custom.fn 签名不变。
-            // 现在的调用签名是 fn(battle, caster, val, mult)
-            // 我们需要从外部传入 mult
+            // 现在调用签名扩展为 fn(battle, caster, val, mult, targetIdx)
             if (typeof eff.fn === 'function') {
-                await eff.fn(context, caster, val, eff._tempMult || 1);
+                const targetIdx = eff._tempTargetIdx !== undefined ? eff._tempTargetIdx : 0;
+                await eff.fn(context, caster, val, eff._tempMult || 1, targetIdx);
             }
         }
     },

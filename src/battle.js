@@ -16,7 +16,8 @@ export const battle = {
     // These getters ensure that legacy code (and UI) reading 'window.battle.enemy' 
     // actually gets the data from the store.
     get allies() { return battleStore.allies; },
-    get enemy() { return battleStore.enemy; },
+    get enemies() { return battleStore.enemies; },
+    get enemy() { return battleStore.enemies[0]; }, // Compatibility for single enemy logic
     get manaData() { return battleStore.mana; }, // Map manaData -> store.mana
     get playerDeck() { return battleStore.deck; },
     set playerDeck(val) { battleStore.setDeck(val); }, // Setter for initialization assignments
@@ -189,14 +190,56 @@ export const battle = {
         const cost = this.getCardCost(id);
         if(this.manaData.current < cost) { events.emit('toast', "灵感不足"); return; }
         
-        if(cardData.type === 'atk' || cardData.type === 'debuff' || cardData.eff === 'boom' || cardData.eff === 'bash') {
+        // 如果是需要指向的卡牌 (攻击/Debuff/特殊单体)，进入选中模式，等待点击目标
+        if(cardData.type === 'atk' || cardData.type === 'debuff' || cardData.type === 'spec' || cardData.eff === 'boom' || cardData.eff === 'bash') {
             if(this.selectedCard === idx) this.deselect(); else { this.selectedCard = idx; events.emit('update-ui'); }
-        } else { this.playCard(idx); }
+        } else { 
+            // 不需要指向的卡牌 (AOE, Buff, Draw等)，直接打出
+            this.playCard(idx, 0); 
+        }
     },
 
-    targetEnemy() { if(this.selectedCard !== -1) this.playCard(this.selectedCard); },
+    targetEnemy(idx) { 
+        if (this.selectedCard === -1) return;
+        const id = this.hand[this.selectedCard];
+        const card = window.CARDS[id];
 
-    async playCard(idx) {
+        // 1. 如果 UI 传了明确的 idx (点击触发)
+        if (typeof idx === 'number') {
+            const target = this.enemies[idx];
+            if (!target || target.hp <= 0) {
+                events.emit('toast', "目标已倒下");
+                return;
+            }
+            this.playCard(this.selectedCard, idx);
+        } else {
+            // 2. 如果没传 (从悬停状态获取)
+            const hoverIdx = document.body.getAttribute('data-hover-enemy-idx');
+            if (hoverIdx !== null) {
+                const hIdx = parseInt(hoverIdx);
+                const target = this.enemies[hIdx];
+                if (target && target.hp > 0) {
+                    this.playCard(this.selectedCard, hIdx);
+                    return;
+                }
+            }
+            
+            // 3. 兜底/重定向逻辑 (针对不需要精准指向的卡牌)
+            if (card.tag === 'aoe' || card.type === 'skill' || card.type === 'power') {
+                this.playCard(this.selectedCard, 0);
+            } else {
+                // 单体攻击：尝试寻找第一个活着的敌人
+                const firstAliveIdx = this.enemies.findIndex(e => e.hp > 0);
+                if (firstAliveIdx !== -1) {
+                    this.playCard(this.selectedCard, firstAliveIdx);
+                } else {
+                    this.deselect();
+                }
+            }
+        }
+    },
+
+    async playCard(idx, targetIdx = 0) {
         if (battleStore.state.processing) return; // 双重保险
         battleStore.setProcessing(true); // 锁定
 
@@ -262,7 +305,13 @@ export const battle = {
         
         if (card.tag === 'atk') {
             if (gameStore.relics.includes('rosin')) {
-                this.enemy.buffs.vuln += 1; 
+                // 如果是单体，给目标。如果是 AOE，给所有人
+                if (card.tag === 'aoe') {
+                    this.enemies.forEach(e => e.buffs.vuln += 1);
+                } else {
+                    const e = this.enemies[targetIdx];
+                    if (e) e.buffs.vuln += 1;
+                }
             }
         }
 
@@ -364,7 +413,7 @@ export const battle = {
              // 我们给每次触发加一个微小的延时，让它们依次发生，但我们需要把 Promise 存起来
              const p = new Promise(resolve => {
                  setTimeout(async () => {
-                     await this.executeCardEffect(card, caster, val, mult, bonusVal);
+                     await this.executeCardEffect(card, caster, val, mult, bonusVal, targetIdx);
                      resolve();
                  }, t * 300);
              });
@@ -405,11 +454,11 @@ export const battle = {
         events.emit('update-ui');
     },
 
-    async executeCardEffect(card, caster, val, mult, bonusVal = 0) {
+    async executeCardEffect(card, caster, val, mult, bonusVal = 0, targetIdx = 0) {
         // 纯数据驱动逻辑 (Data-Driven)
         if (card.effects && Array.isArray(card.effects)) {
             for (const effect of card.effects) {
-                await this.processEffect(effect, caster, mult, val, bonusVal);
+                await this.processEffect(effect, caster, mult, val, bonusVal, targetIdx);
             }
         } else {
             console.warn(`Card ${card.name} (ID: ${card.id}) has no effects configuration.`);
@@ -417,7 +466,7 @@ export const battle = {
         events.emit('update-ui');
     },
 
-    async processEffect(eff, caster, mult, cardVal, bonusVal) {
+    async processEffect(eff, caster, mult, cardVal, bonusVal, targetIdx) {
         // 计算数值
         let val = eff.val !== undefined ? eff.val : cardVal;
         
@@ -438,35 +487,63 @@ export const battle = {
             await window.wait(eff.delay);
         }
 
-        // 委托给 EffectProcessor 执行
+        // AOE 逻辑支持
+        if (eff.target === 'all') {
+            if (eff.type === 'dmg' || eff.type === 'status') {
+                for (let i = 0; i < this.enemies.length; i++) {
+                    if (this.enemies[i].hp > 0) {
+                        const copy = {...eff, _tempTargetIdx: i};
+                        await EffectProcessor.execute(this, copy, caster, val, mult);
+                    }
+                }
+                return;
+            }
+        }
+
+        // 正常单体逻辑
+        eff._tempTargetIdx = targetIdx;
         await EffectProcessor.execute(this, eff, caster, val, mult);
     },
 
-    dmgEnemy(val, isPierce = false) {
+    dmgEnemy(val, isPierce = false, targetIdx = 0) {
         if(this.phase === 'VICTORY') return;
+        const target = this.enemies[targetIdx];
+        if (!target || target.hp <= 0) return;
+
         // 易伤计算
-        if (this.enemy.buffs.vuln > 0) {
+        if (target.buffs.vuln > 0) {
             val = Math.floor(val * 1.5);
         }
 
         let dmg = val;
         // 护盾抵消逻辑 (非穿透伤害)
-        if (!isPierce && this.enemy.block > 0) {
-            let blocked = Math.min(this.enemy.block, dmg);
-            this.enemy.block -= blocked;
+        if (!isPierce && target.block > 0) {
+            let blocked = Math.min(target.block, dmg);
+            target.block -= blocked;
             dmg -= blocked;
-            if(blocked > 0) events.emit('float-text', { text: "格挡", targetId: 'sprite-enemy', color: '#3498db' });
+            if(blocked > 0) events.emit('float-text', { text: "格挡", targetId: (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`), color: '#3498db' });
         }
 
-        this.enemy.hp = Math.max(0, this.enemy.hp - dmg);
+        target.hp = Math.max(0, target.hp - dmg);
         if(dmg > 0) {
-            events.emit('float-text', { text: `-${dmg}`, targetId: 'sprite-enemy', color: '#ff6b6b' });
-            events.emit('log', { msg: `造成 ${dmg} 伤害`, type: 'dmg' });
+            events.emit('float-text', { text: `-${dmg}`, targetId: (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`), color: '#ff6b6b' });
+            events.emit('log', { msg: `对 ${target.name} 造成 ${dmg} 伤害`, type: 'dmg' });
         }
         if(dmg > 10) events.emit('shake');
         
+        // 死亡检测与动画标记
+        if (target.hp <= 0 && !target.dead) {
+            target.dead = true;
+            target.isDying = true; // 开启死亡动画标记
+            // 动画结束后，将 isDying 设为 false，防止重绘时重复播放
+            setTimeout(() => {
+                target.isDying = false;
+                events.emit('update-ui'); // 再次触发 UI 切换到 dead-static
+            }, 1200);
+        }
+
         events.emit('update-ui');
-        if(this.enemy.hp <= 0) this.win();
+        if(this.enemies.every(e => e.hp <= 0)) this.win();
     },
 
     healAll(val) {
@@ -550,41 +627,35 @@ export const battle = {
     async enemyAction() {
         if(this.phase === 'VICTORY') return;
         
-        // 默认回合切换等待时间
-        let actionWaitTime = 400;
+        if(gameStore.partyRoles.includes('vocalist')) this.healAll(5);
 
-        // 敌人回合开始：重置敌人护盾 (除非有特殊机制保留，暂不实现)
-        this.enemy.block = 0;
-        
-        if(window.game.partyRoles.includes('vocalist')) this.healAll(5);
+        // 遍历所有存活敌人依次行动
+        for (let i = 0; i < this.enemies.length; i++) {
+            const enemy = this.enemies[i];
+            if (enemy.hp <= 0) continue;
 
-        if(!this.enemy.stunned) {
-            let intentType = this.enemy.intent.type;
-            let intentVal = this.enemy.intent.val;
+            // 敌人行动开始：重置当前敌人护盾
+            enemy.block = 0;
+            
+            const spriteId = (i === 0 ? 'sprite-enemy' : `sprite-enemy-${i}`);
+            const eSprite = document.getElementById(spriteId);
 
-            // --- 攻击类行动 (加入动画演出) ---
-            if(intentType === 'atk' || intentType === 'atk_heavy' || intentType === 'atk_vuln') {
-                
-                // 1. 播放敌人攻击动画
-                const eSprite = document.getElementById('sprite-enemy');
-                const isKnight = this.enemy.name === "失律卫士";
-                const isDancer = this.enemy.name === "失衡舞者";
-                const isDemon = this.enemy.name === "寂静指挥家";
-                const isBayinhe = this.enemy.name === "恶意八音盒";
-                const isChoir = this.enemy.name === "杂音唱诗班";
-                const isSlime = this.enemy.name === "杂音微粒";
-                
-                if(eSprite) {
-                    let animClass = 'anim-enemy-atk'; // 默认
-                    if (isKnight) animClass = 'anim-knight-attack';
-                    if (isDancer) animClass = 'anim-dancer-attack';
-                    if (isDemon) animClass = 'anim-demon-cast';
-                    if (isBayinhe) animClass = 'anim-bayinhe-attack';
-                    if (isChoir) animClass = 'anim-choir-attack';
-                    if (isSlime) animClass = 'anim-slime-atk';
+            if (!enemy.stunned) {
+                let intentType = enemy.intent.type;
+                let intentVal = enemy.intent.val;
+
+                // --- 攻击类行动 ---
+                if(intentType === 'atk' || intentType === 'atk_heavy' || intentType === 'atk_vuln') {
                     
-                    // --- 动态距离计算 ---
-                    if (isKnight || isDancer || isBayinhe || isSlime) {
+                    if(eSprite) {
+                        let animClass = 'anim-enemy-atk';
+                        if (enemy.name === "失律卫士") animClass = 'anim-knight-attack';
+                        if (enemy.name === "失衡舞者") animClass = 'anim-dancer-attack';
+                        if (enemy.name === "寂静指挥家") animClass = 'anim-demon-cast';
+                        if (enemy.name === "恶意八音盒") animClass = 'anim-bayinhe-attack';
+                        if (enemy.name === "杂音唱诗班") animClass = 'anim-choir-attack';
+                        if (enemy.name === "杂音微粒") animClass = 'anim-slime-atk';
+                        
                         const targetUnit = this.getFrontAlly();
                         const tEl = targetUnit ? document.getElementById(`char-${targetUnit.role}`) : null;
                         if (tEl) {
@@ -593,267 +664,184 @@ export const battle = {
                             const dist = (tRect.left - eRect.left) + 60; 
                             eSprite.style.setProperty('--attack-dist', `${dist}px`);
                         }
-                    }
 
-                    eSprite.classList.remove('anim-knight-attack', 'anim-dancer-attack', 'anim-demon-cast', 'anim-bayinhe-attack', 'anim-choir-attack', 'anim-enemy-atk', 'anim-slime-atk');
-                    
-                    // 暂时移除呼吸动画，防止冲突
-                    eSprite.classList.remove('enemy-idle-breathe');
-                    
-                    void eSprite.offsetWidth; // 强制重绘
-                    eSprite.classList.add(animClass);
-                    
-                    // 动画持续时间估算 (最长的动画大概1.5s，这里给个安全值)
-                    // 注意：这里没有像 playCard 那样精确控制，但通常 enemyRushOptimized 是 1.2s
-                    // 我们可以根据 animClass 动态设置恢复时间，或者统一用一个稍长的值
-                    let animDuration = 1200;
-                    if (isDemon || isBayinhe) animDuration = 1500;
-                    if (isSlime || isDancer) animDuration = 1000;
-                    
-                    setTimeout(() => {
-                        eSprite.classList.remove(animClass);
-                        eSprite.classList.add('enemy-idle-breathe');
-                    }, animDuration);
-                    
-                    if (isKnight) events.emit('play-sound', 'assets/BGM/monster.wav');
-                }
-
-                // 2. 延迟结算伤害
-                let hitDelay = 300;
-                if (isKnight) hitDelay = 710;
-                if (isDancer) hitDelay = 450;
-                if (isDemon) hitDelay = 750; 
-                if (isBayinhe) hitDelay = 750; 
-                if (isChoir) hitDelay = 480; 
-                if (isSlime) hitDelay = 600;
-
-                await window.wait(hitDelay);
-                if(this.phase === 'VICTORY') return;
-
-                let baseDmg = parseInt(intentVal);
-                let strBonus = parseInt(this.enemy.buffs.str || 0);
-                let dmg = baseDmg + strBonus;
-                console.log(`[Damage Debug] Turn: ${this.turnCount}, Enemy: ${this.enemy.name}, Base: ${baseDmg}, Str: ${strBonus}, Final: ${dmg}`);
-                
-                let target = this.getFrontAlly();
-                
-                if(target) {
-                    // ... (特效逻辑保持不变)
-                    if (this.enemy.name === "杂音唱诗班") {
-                        events.emit('spawn-vfx', { type: 'Psychic_Shriek', targetId: 'sprite-enemy' });
-                        events.emit('play-sound', 'assets/BGM/attack-cannibal-beast.wav');
-                    }
-                    if (this.enemy.name === "杂音微粒") {
-                        events.emit('spawn-vfx', { type: 'heavy_hit', targetId: `char-${target.role}` }); // Slime Hit VFX
-                        events.emit('play-sound', 'assets/BGM/shadowboss_attack.wav');
-                    }
-                    if (isKnight) {
-                        events.emit('spawn-vfx', { type: 'Heavy_Rending', targetId: `char-${target.role}` });
-                        events.emit('spawn-vfx', { type: 'Blood_Splatter', targetId: `char-${target.role}` });
-                    }
-                    if (isDancer) {
-                        events.emit('spawn-vfx', { type: 'Sharp_Slash', targetId: `char-${target.role}` });
-                        events.emit('spawn-vfx', { type: 'Blood_Splatter', targetId: `char-${target.role}` });
-                    }
-                    if (isDemon) {
-                        events.emit('spawn-vfx', { type: 'Boss_wave', targetId: `char-${target.role}` });
-                        events.emit('play-sound', 'assets/BGM/nastyattack.wav');
-                    }
-                    if (isBayinhe) {
-                        events.emit('spawn-vfx', { type: 'Heavy_Rending', targetId: `char-${target.role}` });
-                        events.emit('spawn-vfx', { type: 'Blood_Splatter', targetId: `char-${target.role}` }); 
-                    }
-
-                    const tSprite = document.getElementById(`char-${target.role}`);
-                    if(tSprite) {
-                        tSprite.classList.remove('anim-ally-hit');
-                        void tSprite.offsetWidth;
-                        tSprite.classList.add('anim-ally-hit');
-                    }
-
-                    if(target.block > 0) { 
-                        let b = Math.min(target.block, dmg); 
-                        target.block -= b; 
-                        dmg -= b; 
-                    }
-                    
-                    if(dmg > 0) {
-                        dmg = Math.floor(dmg);
-                        target.hp = Math.floor(target.hp - dmg);
-                        events.emit('float-text', { text: `-${dmg}`, targetId: `char-${target.role}`, color: '#cc0000' });
-                        events.emit('log', { msg: `${this.enemy.name} 攻击 ${target.name} 造成 ${dmg} 伤害`, type: 'enemy' });
+                        eSprite.classList.remove('anim-knight-attack', 'anim-dancer-attack', 'anim-demon-cast', 'anim-bayinhe-attack', 'anim-choir-attack', 'anim-enemy-atk', 'anim-slime-atk');
+                        eSprite.classList.remove('enemy-idle-breathe');
+                        void eSprite.offsetWidth; 
+                        eSprite.classList.add(animClass);
                         
-                        events.emit('shake'); 
-                        if(target.hp <= 0) { 
-                            target.hp = 0; target.dead = true; target.block = 0; 
-                            events.emit('toast', `${target.name} 倒下了!`); 
-                            events.emit('log', { msg: `${target.name} 阵亡`, type: 'enemy' }); 
-                            
-                            if (gameStore.relics.includes('mozart_quill') && !this.mozartTriggered) {
-                                this.dmgEnemy(30, true); 
-                                events.emit('toast', "安魂曲: 绝唱!");
-                                events.emit('spawn-vfx', { type: 'Psychic_Shriek', targetId: 'sprite-enemy' }); 
-                                this.mozartTriggered = true;
-                            }
+                        // 动画结束后清理并恢复呼吸
+                        const animDuration = (enemy.name === "寂静指挥家" || enemy.name === "恶意八音盒") ? 1500 : 1200;
+                        setTimeout(() => {
+                            eSprite.classList.remove(animClass);
+                            eSprite.classList.add('enemy-idle-breathe');
+                        }, animDuration);
 
-                            // 检查全灭
-                            if (this.allies.every(a => a.dead)) {
-                                this.lose();
-                                return;
-                            }
+                        if (enemy.name === "失律卫士") events.emit('play-sound', 'assets/BGM/monster.wav');
+                    }
+
+                    // 结算延迟 (匹配关键帧)
+                    let hitDelay = 600;
+                    if (enemy.name === "失律卫士") hitDelay = 710;
+                    if (enemy.name === "失衡舞者") hitDelay = 450;
+                    if (enemy.name === "寂静指挥家") hitDelay = 750;
+                    if (enemy.name === "恶意八音盒") hitDelay = 750;
+                    if (enemy.name === "杂音唱诗班") hitDelay = 480;
+                    if (enemy.name === "杂音微粒") hitDelay = 600;
+
+                    await window.wait(hitDelay);
+                    
+                    if(this.phase === 'VICTORY') return;
+
+                    let dmg = parseInt(intentVal) + parseInt(enemy.buffs.str || 0);
+                    let target = this.getFrontAlly();
+                    
+                    if(target) {
+                        // 播放特定敌人的音效和受击特效
+                        if (enemy.name === "杂音唱诗班") {
+                            events.emit('spawn-vfx', { type: 'Psychic_Shriek', targetId: spriteId });
+                            events.emit('play-sound', 'assets/BGM/attack-cannibal-beast.wav');
                         }
-                    } else { 
-                        events.emit('float-text', { text: "格挡!", targetId: `char-${target.role}`, color: '#3498db' }); 
-                        events.emit('log', { msg: `${target.name} 格挡了攻击`, type: 'block' });
+                        if (enemy.name === "杂音微粒") {
+                            events.emit('spawn-vfx', { type: 'heavy_hit', targetId: `char-${target.role}` });
+                            events.emit('play-sound', 'assets/BGM/shadowboss_attack.wav');
+                        }
+                        if (enemy.name === "失律卫士") {
+                            events.emit('spawn-vfx', { type: 'Heavy_Rending', targetId: `char-${target.role}` });
+                            events.emit('spawn-vfx', { type: 'Blood_Splatter', targetId: `char-${target.role}` });
+                        }
+                        if (enemy.name === "失衡舞者") {
+                            events.emit('spawn-vfx', { type: 'Sharp_Slash', targetId: `char-${target.role}` });
+                            events.emit('spawn-vfx', { type: 'Blood_Splatter', targetId: `char-${target.role}` });
+                        }
+                        if (enemy.name === "寂静指挥家") {
+                            events.emit('spawn-vfx', { type: 'Boss_wave', targetId: `char-${target.role}` });
+                            events.emit('play-sound', 'assets/BGM/nastyattack.wav');
+                        }
+                        if (enemy.name === "恶意八音盒") {
+                            events.emit('spawn-vfx', { type: 'Heavy_Rending', targetId: `char-${target.role}` });
+                            events.emit('spawn-vfx', { type: 'Blood_Splatter', targetId: `char-${target.role}` }); 
+                        }
+
+                        const tSprite = document.getElementById(`char-${target.role}`);
+                        if(tSprite) {
+                            tSprite.classList.remove('anim-ally-hit');
+                            void tSprite.offsetWidth;
+                            tSprite.classList.add('anim-ally-hit');
+                        }
+
+                        if(target.block > 0) { 
+                            let b = Math.min(target.block, dmg); 
+                            target.block -= b; 
+                            dmg -= b; 
+                        }
+                        
+                        if(dmg > 0) {
+                            target.hp = Math.max(0, target.hp - dmg);
+                            events.emit('float-text', { text: `-${dmg}`, targetId: `char-${target.role}`, color: '#cc0000' });
+                            events.emit('log', { msg: `${enemy.name} 攻击 ${target.name} 造成 ${dmg} 伤害`, type: 'enemy' });
+                            events.emit('shake'); 
+                            
+                            if(target.hp <= 0) { 
+                                target.hp = 0; target.dead = true; target.block = 0; 
+                                events.emit('toast', `${target.name} 倒下了!`); 
+                                if (gameStore.relics.includes('mozart_quill') && !this.mozartTriggered) {
+                                    this.dmgEnemy(30, true, i); 
+                                    this.mozartTriggered = true;
+                                }
+                                if (this.allies.every(a => a.dead)) { this.lose(); return; }
+                            }
+                        } else {
+                            events.emit('float-text', { text: "格挡!", targetId: `char-${target.role}`, color: '#3498db' });
+                        }
                     }
-                    
-                    if (intentType === 'atk_vuln') {
-                        events.emit('float-text', { text: "压制!", targetId: `char-${target.role}`, color: '#e67e22' }); 
-                    }
-                }
-                events.emit('update-ui');
-
-                // 3. 动画清理 (等待剩余动画时间)
-                let animDuration = 600;
-                if (isKnight) animDuration = 1200;
-                if (isDancer) animDuration = 1000;
-                if (isDemon) animDuration = 1500;
-                if (isBayinhe) animDuration = 1500;
-                if (isChoir) animDuration = 1200;
-                if (isSlime) animDuration = 1200;
-                
-                if (animDuration > hitDelay) {
-                    await window.wait(animDuration - hitDelay);
-                }
-
-                if(eSprite) {
-                    eSprite.style.backgroundImage = `url('${this.enemy.sprite}')`;
-                    // eSprite.classList.remove(...); // Already handled by setTimeout with idle restore
-                    events.emit('update-ui'); 
-                }
-
-                // 设置回合推进的等待时间
-                actionWaitTime = Math.max(actionWaitTime, (isDemon || isBayinhe) ? 1600 : (isChoir || isKnight || isSlime ? 1300 : 800));
-                
-                // 此时 animDuration 时间已过。如果 actionWaitTime 比它还长，我们还需要再等一会
-                if (actionWaitTime > animDuration) {
-                    await window.wait(actionWaitTime - animDuration);
-                }
-
-            } 
-            // --- 非攻击类行动 (立即结算) ---
-            else {
-                // ... (原有逻辑保持不变)
-                if (intentType === 'def') {
-                    let blockVal = Math.floor(this.enemy.maxHp * 0.1); 
-                    this.enemy.block += blockVal;
-                    events.emit('float-text', { text: `护盾+${blockVal}`, targetId: 'sprite-enemy', color: '#3498db' });
-                    
-                    // 失律卫士防御动画
-                    if (this.enemy.name === "失律卫士") {
-                        const es = document.getElementById('sprite-enemy');
-                        if(es) {
-                            es.classList.remove('anim-knight-defend', 'enemy-idle-breathe');
-                            void es.offsetWidth; 
-                            es.classList.add('anim-knight-defend');
+                    // 等待动画余波
+                    await window.wait(600);
+                } 
+                // --- 非攻击类行动 ---
+                else {
+                    let waitTime = 800;
+                    if (intentType === 'def' || intentType === 'def_block') {
+                        let blockVal = (intentType === 'def_block') ? Math.floor(enemy.maxHp * 0.25) : Math.floor(enemy.maxHp * 0.1);
+                        enemy.block += blockVal;
+                        events.emit('float-text', { text: `护盾+${blockVal}`, targetId: spriteId, color: '#3498db' });
+                        
+                        if (enemy.name === "失律卫士" && eSprite) {
+                            eSprite.classList.remove('anim-knight-defend', 'enemy-idle-breathe');
+                            void eSprite.offsetWidth; 
+                            eSprite.classList.add('anim-knight-defend');
                             events.emit('play-sound', 'assets/BGM/shield.wav');
                             setTimeout(() => {
-                                es.classList.remove('anim-knight-defend');
-                                es.classList.add('enemy-idle-breathe');
+                                eSprite.classList.remove('anim-knight-defend');
+                                eSprite.classList.add('enemy-idle-breathe');
                             }, 1200);
+                            waitTime = 1300;
                         }
-                        actionWaitTime = 1300;
-                    }
-                }
-                else if (intentType === 'def_block') {
-                    let blockVal = Math.floor(this.enemy.maxHp * 0.25);
-                    this.enemy.block += blockVal;
-                    events.emit('float-text', { text: `强力护盾+${blockVal}`, targetId: 'sprite-enemy', color: '#3498db' });
-                }
-                else if (intentType === 'buff') {
-                    this.enemy.buffs.str += 2; 
-                    events.emit('float-text', { text: "力量UP!", targetId: 'sprite-enemy', color: '#e74c3c' });
-                    
-                    // 寂静指挥家强化动画
-                    if (this.enemy.name === "寂静指挥家") {
-                        const es = document.getElementById('sprite-enemy');
-                        if(es) {
-                            es.classList.remove('anim-demon-buff', 'enemy-idle-breathe');
-                            void es.offsetWidth; 
-                            es.classList.add('anim-demon-buff');
+                    } else if (intentType === 'buff' || intentType === 'buff_str') {
+                        let strGain = (intentType === 'buff_str') ? 3 : 2;
+                        enemy.buffs.str += strGain;
+                        events.emit('float-text', { text: `力量+${strGain}`, targetId: spriteId, color: '#e74c3c' });
+                        
+                        if (enemy.name === "寂静指挥家" && eSprite) {
+                            eSprite.classList.remove('anim-demon-buff', 'enemy-idle-breathe');
+                            void eSprite.offsetWidth; 
+                            eSprite.classList.add('anim-demon-buff');
                             events.emit('play-sound', 'assets/BGM/piano-string-glissando-low-a.wav'); 
                             setTimeout(() => {
-                                es.classList.remove('anim-demon-buff');
-                                es.classList.add('enemy-idle-breathe');
+                                eSprite.classList.remove('anim-demon-buff');
+                                eSprite.classList.add('enemy-idle-breathe');
                             }, 1500);
+                            waitTime = 1600;
                         }
-                        actionWaitTime = 1600;
-                    }
-                }
-                else if (intentType === 'buff_str') {
-                    this.enemy.buffs.str += 3; 
-                    events.emit('float-text', { text: "蓄力!", targetId: 'sprite-enemy', color: '#e74c3c' }); 
-                    
-                    // 八音盒蓄力动画
-                    if (this.enemy.name === "恶意八音盒") {
-                        const es = document.getElementById('sprite-enemy');
-                        if(es) {
-                            es.classList.remove('anim-bayinhe-buff', 'enemy-idle-breathe');
-                            void es.offsetWidth; 
-                            es.classList.add('anim-bayinhe-buff');
-                            // 播放蓄力音效 (借用 monster.wav 低沉声)
+                        if (enemy.name === "恶意八音盒" && eSprite) {
+                            eSprite.classList.remove('anim-bayinhe-buff', 'enemy-idle-breathe');
+                            void eSprite.offsetWidth; 
+                            eSprite.classList.add('anim-bayinhe-buff');
                             events.emit('play-sound', 'assets/BGM/monster.wav');
                             setTimeout(() => {
-                                es.classList.remove('anim-bayinhe-buff');
-                                es.classList.add('enemy-idle-breathe');
+                                eSprite.classList.remove('anim-bayinhe-buff');
+                                eSprite.classList.add('enemy-idle-breathe');
                             }, 1200);
+                            waitTime = 1300;
                         }
-                        actionWaitTime = 1300;
+                    } else if (intentType === 'debuff') {
+                        enemy.buffs.vuln = 0;
+                        events.emit('float-text', { text: "净化", targetId: spriteId, color: '#fff' });
+                        if (enemy.name === "寂静指挥家" && eSprite) {
+                            eSprite.classList.remove('anim-demon-buff', 'enemy-idle-breathe');
+                            void eSprite.offsetWidth; 
+                            eSprite.classList.add('anim-demon-buff');
+                            events.emit('play-sound', 'assets/BGM/piano-string-glissando-low-a.wav'); 
+                            setTimeout(() => {
+                                eSprite.classList.remove('anim-demon-buff');
+                                eSprite.classList.add('enemy-idle-breathe');
+                            }, 1500);
+                            waitTime = 1600;
+                        }
                     }
+                    await window.wait(waitTime);
                 }
-                else if (intentType === 'debuff') {
-                    this.enemy.buffs.vuln = 0;
-                    events.emit('float-text', { text: "净化", targetId: 'sprite-enemy', color: '#fff' });
-                    
-                                        // 寂静指挥家净化动画
-                                        if (this.enemy.name === "寂静指挥家") {
-                                            const es = document.getElementById('sprite-enemy');
-                                            if(es) {
-                                                es.classList.remove('anim-demon-buff', 'enemy-idle-breathe');
-                                                void es.offsetWidth; 
-                                                es.classList.add('anim-demon-buff');
-                                                events.emit('play-sound', 'assets/BGM/piano-string-glissando-low-a.wav'); 
-                                                setTimeout(() => {
-                                                    es.classList.remove('anim-demon-buff');
-                                                    es.classList.add('enemy-idle-breathe');
-                                                }, 1500);
-                                            }
-                                            actionWaitTime = 1600;
-                                        }                }
-                events.emit('update-ui'); // 非攻击类行动立即更新
-                
-                // 等待 actionWaitTime
-                await window.wait(actionWaitTime);
+            } else {
+                events.emit('toast', `${enemy.name} 被冰冻!`);
+                enemy.stunned = false;
+                await window.wait(800);
             }
-        } else { 
-            events.emit('toast', "敌人被冰冻!"); 
-            this.enemy.stunned = false; 
             events.emit('update-ui');
-            await window.wait(800);
+            await window.wait(400); // 敌人间的行动间隔
         }
 
-        if(this.enemy.buffs.vuln > 0) this.enemy.buffs.vuln--;
+        // 所有人行动完后
+        this.enemies.forEach(e => {
+            if(e.buffs.vuln > 0) e.buffs.vuln--;
+        });
         
-        // 恢复临时削弱的力量
         if (this.tempStrDebuff > 0) {
-            this.enemy.buffs.str += this.tempStrDebuff;
-            events.emit('float-text', { text: "力量恢复", targetId: 'sprite-enemy', color: '#e74c3c' });
+            this.enemies.forEach(e => e.buffs.str += this.tempStrDebuff);
             this.tempStrDebuff = 0;
         }
 
-        events.emit('update-ui');
         this.planEnemy();
-        await window.wait(800);
+        await window.wait(600);
         this.startTurn();
     },
 
@@ -870,50 +858,38 @@ export const battle = {
     },
 
     planEnemy() {
-        let base = 5 + Math.floor(gameStore.level * 1.5);
-        
-        // 获取行动列表副本
-        const originalActs = window.battle.enemy.acts || ['atk'];
-        let acts = [...originalActs];
-        
-        // --- AI 智能修正 ---
-        
-        // 1. 寂静指挥家 (Boss): 智能净化
-        // 如果没有负面状态 (目前主要是易伤)，则从行动池中暂时移除 'debuff' (净化)
-        if (this.enemy.name === "寂静指挥家") {
-            const hasDebuff = (this.enemy.buffs.vuln > 0);
-            if (!hasDebuff) {
-                acts = acts.filter(a => a !== 'debuff');
-                // console.log("Boss AI: No debuffs, skipping Cleanse.");
+        this.enemies.forEach(enemy => {
+            if (enemy.hp <= 0) return;
+            
+            let base = 5 + Math.floor(gameStore.level * 1.5);
+            const originalActs = enemy.acts || ['atk'];
+            let acts = [...originalActs];
+            
+            // AI 智能修正 (Boss/Elite 特有逻辑)
+            if (enemy.name === "寂静指挥家") {
+                if (enemy.buffs.vuln === 0) acts = acts.filter(a => a !== 'debuff');
             }
-        }
-
-        // 2. 恶意八音盒: 避免无限蓄力
-        // 如果力量已经很高 (>=6, 约等于蓄力2次)，强制移除蓄力选项，迫使其攻击
-        if (this.enemy.name === "恶意八音盒") {
-            const currentStr = this.enemy.buffs.str || 0;
-            if (currentStr >= 6) {
-                acts = acts.filter(a => a !== 'buff_str');
-                // console.log("Bayinhe AI: High strength, forcing Attack.");
+            if (enemy.name === "恶意八音盒") {
+                if ((enemy.buffs.str || 0) >= 6) acts = acts.filter(a => a !== 'buff_str');
             }
-        }
-        
-        // 兜底：如果过滤后列表为空 (理论上不应发生，除非配置只有净化)，补一个普攻
-        if (acts.length === 0) acts = ['atk'];
-
-        const act = acts[Math.floor(Math.random() * acts.length)];
-        
-        // 基础行动
-        if(act === 'atk') this.enemy.intent = { type:'atk', val:base, icon:'assets/UI/attack.png' };
-        else if(act === 'def') this.enemy.intent = { type:'def', val:0, icon:'assets/UI/Defend.png' };
-        else if(act === 'buff') this.enemy.intent = { type:'buff', val:0, icon:'assets/UI/Mana.png' }; 
-        else if(act === 'debuff') this.enemy.intent = { type:'debuff', val:0, icon:'assets/UI/Debuff.png' };
-        
-        // 特殊行动
-        else if(act === 'atk_heavy') this.enemy.intent = { type:'atk_heavy', val:Math.floor(base * 1.5), icon:'assets/UI/attack.png' }; // 重击
-        else if(act === 'atk_vuln') this.enemy.intent = { type:'atk_vuln', val:Math.floor(base * 0.8), icon:'assets/UI/Debuff.png' }; // 攻击带Debuff图标
-        else if(act === 'buff_str') this.enemy.intent = { type:'buff_str', val:0, icon:'assets/UI/Mana.png' }; // 强力蓄力
-        else if(act === 'def_block') this.enemy.intent = { type:'def_block', val:0, icon:'assets/UI/Defend.png' }; // 强力防御
+            
+            if (acts.length === 0) acts = ['atk'];
+            const act = acts[Math.floor(Math.random() * acts.length)];
+            
+            // 赋值意图
+            const intents = {
+                'atk': { type:'atk', val:base, icon:'assets/UI/attack.png' },
+                'def': { type:'def', val:0, icon:'assets/UI/Defend.png' },
+                'buff': { type:'buff', val:0, icon:'assets/UI/Mana.png' },
+                'debuff': { type:'debuff', val:0, icon:'assets/UI/Debuff.png' },
+                'atk_heavy': { type:'atk_heavy', val:Math.floor(base * 1.5), icon:'assets/UI/attack.png' },
+                'atk_vuln': { type:'atk_vuln', val:Math.floor(base * 0.8), icon:'assets/UI/Debuff.png' },
+                'buff_str': { type:'buff_str', val:0, icon:'assets/UI/Mana.png' },
+                'def_block': { type:'def_block', val:0, icon:'assets/UI/Defend.png' }
+            };
+            
+            enemy.intent = intents[act] || intents['atk'];
+        });
     },
 
     deselect() { this.selectedCard = -1; events.emit('update-ui'); }
