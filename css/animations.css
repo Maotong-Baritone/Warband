@@ -128,8 +128,8 @@
 
 .anim-knight-attack {
     animation: 
-        enemyRushOptimized 1.2s cubic-bezier(0.5, 0, 0.2, 1),
-        knightSequenceOptimized 1.2s steps(1); 
+        enemyRushOptimized 1.2s cubic-bezier(0.5, 0, 0.2, 1) forwards,
+        knightSequenceOptimized 1.2s steps(1) forwards; 
 }
 
 /* --- 失衡舞者专用：三段式突刺动画 --- */
@@ -148,13 +148,13 @@
     35% { background-image: url('../assets/Enemies/shihengwuzhe_attack_2.png'); }
     45% { background-image: url('../assets/Enemies/shihengwuzhe_attack_3.png'); }
     85% { background-image: url('../assets/Enemies/shihengwuzhe.png'); }
-    100% { background-image: url('../assets/Enemies/shihengwuzhe.png'); }
+    100% { background-image: url('../assets/Enemies/shihengwuzhe.png'); } /* Extend hold time */
 }
 
 .anim-dancer-attack {
     animation: 
-        dancerMove 1.0s cubic-bezier(0.2, 0.8, 0.2, 1),
-        dancerSequence 1.0s steps(1); 
+        dancerMove 1.0s cubic-bezier(0.2, 0.8, 0.2, 1) forwards,
+        dancerSequence 1.0s steps(1) forwards; 
 }
 
 /* --- 寂静指挥家专用：远程施法动画 --- */
@@ -177,8 +177,8 @@
 
 .anim-demon-cast {
     animation: 
-        demonCast 1.5s cubic-bezier(0.4, 0, 0.2, 1),
-        demonSequence 1.5s steps(1); 
+        demonCast 1.5s cubic-bezier(0.4, 0, 0.2, 1) forwards,
+        demonSequence 1.5s steps(1) forwards; 
 }
 
 /* --- 恶意八音盒专用：蓄力撕咬动画 --- */
@@ -202,8 +202,8 @@
 
 .anim-bayinhe-attack {
     animation: 
-        bayinheMove 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55),
-        bayinheSequence 1.5s steps(1); 
+        bayinheMove 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards,
+        bayinheSequence 1.5s steps(1) forwards; 
 }
 
 /* --- 恶意八音盒专用：蓄力动画 --- */
@@ -222,8 +222,8 @@
 
 .anim-bayinhe-buff {
     animation: 
-        bayinheBuffMove 1.2s ease-in-out,
-        bayinheBuffSequence 1.2s steps(1);
+        bayinheBuffMove 1.2s ease-in-out forwards,
+        bayinheBuffSequence 1.2s steps(1) forwards;
 }
 
 /* --- 杂音唱诗班专用：精神尖啸动画 --- */
@@ -250,8 +250,8 @@
 
 .anim-choir-attack {
     animation: 
-        choirMove 1.2s ease-in-out,
-        choirSequence 1.2s steps(1); 
+        choirMove 1.2s ease-in-out forwards,
+        choirSequence 1.2s steps(1) forwards; 
 }
 
 /* --- 失律卫士专用：防御动画 --- */
@@ -272,8 +272,8 @@
 
 .anim-knight-defend {
     animation: 
-        knightDefendMove 1.2s ease-in-out,
-        knightDefendSequence 1.2s steps(1);
+        knightDefendMove 1.2s ease-in-out forwards,
+        knightDefendSequence 1.2s steps(1) forwards;
 }
 
 /* --- 寂静指挥家专用：强化/净化动画 --- */
@@ -294,8 +294,8 @@
 
 .anim-demon-buff {
     animation: 
-        demonBuffMove 1.5s ease-in-out,
-        demonBuffSequence 1.5s steps(1);
+        demonBuffMove 1.5s ease-in-out forwards,
+        demonBuffSequence 1.5s steps(1) forwards;
 }
 
 /* 我方受击动作：红光闪烁 + 剧烈震动 */
@@ -311,7 +311,7 @@
 }
 
 .anim-ally-hit {
-    animation: allyHit 0.5s ease-out;
+    animation: allyHit 0.5s ease-out forwards;
 }
 
 /* --- 沉音守望者 (Cellist) 专用：强化/演奏动画 --- */
@@ -334,8 +334,8 @@
 
 .anim-cellist-buff {
     animation: 
-        cellistBuffMove 1.2s ease-in-out,
-        cellistBuffSequence 1.2s steps(1); 
+        cellistBuffMove 1.2s ease-in-out forwards,
+        cellistBuffSequence 1.2s steps(1) forwards; 
 }
 /* 适用于通用卡牌 (Common Deck) 或非专属技能 */
 @keyframes genericAtk {
@@ -389,8 +389,8 @@
 
 .anim-brass-atk {
     animation: 
-        brassMove 0.8s ease-in-out,
-        brassSequence 0.8s steps(1); 
+        brassMove 0.8s ease-in-out forwards,
+        brassSequence 0.8s steps(1) forwards; 
 }
 
 /* --- 杂音微粒 (Slime) 专用：撞击动画 --- */
@@ -410,11 +410,11 @@
     60% { background-image: url('../assets/Enemies/slime_attack_2.png'); }
     75% { background-image: url('../assets/Enemies/slime_attack_2.png'); }
     90% { background-image: url('../assets/Enemies/slime.png'); }
-    100% { background-image: url('../assets/Enemies/slime.png'); }
+    100% { background-image: url('../assets/Enemies/slime.png'); } /* Extend hold time */
 }
 
 .anim-slime-atk {
     animation: 
-        slimeMove 1.0s cubic-bezier(0.45, 0.05, 0.55, 0.95),
-        slimeSequence 1.0s steps(1); 
+        slimeMove 1.0s cubic-bezier(0.45, 0.05, 0.55, 0.95) forwards,
+        slimeSequence 1.0s steps(1) forwards; 
 }
