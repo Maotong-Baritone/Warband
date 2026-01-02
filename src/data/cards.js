@@ -1,5 +1,6 @@
 import { PATHS } from './constants.js';
-import { gameStore } from '../store/GameStore.js'; // Assuming cards.js is in src/data/ and store is in src/store/
+import { gameStore } from '../store/GameStore.js';
+import { StatusManager } from '../mechanics/StatusManager.js'; // Assuming cards.js is in src/data/ and store is in src/store/
 // Need to adjust import path to be '../store/GameStore.js' relative to 'src/data/'
 
 // 注意：这里的函数逻辑暂时保留，后续会重构为纯数据
@@ -129,7 +130,7 @@ export const CARDS = {
           effects: [{ type: 'custom', fn: (b, c, val, mult, targetIdx) => {
               const target = b.enemies[targetIdx];
               if (!target) return;
-              const debuffCount = (target.buffs.vuln > 0 ? 1 : 0) + (target.stunned ? 1 : 0);
+              const debuffCount = (StatusManager.getStack(target, 'vuln') > 0 ? 1 : 0) + (StatusManager.hasStatus(target, 'stunned') ? 1 : 0);
               let hits = 3 + debuffCount;
               if (gameStore.relics.includes('liszt_bullet')) hits++;
               const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
@@ -165,9 +166,10 @@ export const CARDS = {
               const target = b.enemies[targetIdx];
               if (!target) return;
               // val 已经是 10 * mult
-              let dmg = target.buffs.res * val;
+              let resStacks = StatusManager.getStack(target, 'res');
+              let dmg = resStacks * val;
               b.dmgEnemy(dmg, false, targetIdx);
-              target.buffs.res = 0;
+              StatusManager.removeStatus(target, 'res');
               window.UI.log(`[引爆] 消耗 ${target.name} 共鸣造成 ${dmg} 伤害`, 'dmg');
               window.UI.shake();
               const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
@@ -233,12 +235,9 @@ export const CARDS = {
                   if (!target) return;
                   const level = gameStore.getCardLevel(22);
                   const debuffVal = 2 + level;
-                  target.buffs.str -= debuffVal;
-                  b.tempStrDebuff += debuffVal; // Note: tempStrDebuff is global in BattleStore, maybe it should be per enemy?
-                  // Currently, battle.js enemyAction restores it to ALL enemies. 
-                  // Let's keep it simple or make it per enemy later.
+                  StatusManager.addStatus(target, 'temp_str_down', debuffVal);
                   const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
-                  window.UI.floatText(`力量 -${debuffVal}`, targetId, '#bdc3c7');
+                  window.UI.floatText(`虚弱 ${debuffVal}`, targetId, '#bdc3c7');
               }}
           ]
     },

@@ -3,9 +3,13 @@ import { EffectProcessor } from './EffectProcessor.js';
 import { gameStore } from './store/GameStore.js';
 import { battleStore } from './store/BattleStore.js';
 import { TimerManager } from './utils/TimerManager.js';
+import { StatusManager } from './mechanics/StatusManager.js';
+import { HookManager } from './mechanics/HookManager.js';
 import { TacticManager } from './TacticManager.js';
 import { UI } from './ui.js';
 import { CARDS } from './data/cards.js';
+import { RELICS } from './data/relics.js';
+import { ROLES } from './data/roles.js';
 
 // ================= 战术管理器 =================
 // Moved to src/TacticManager.js
@@ -43,9 +47,6 @@ export const battle = {
     
     get manaSpentTurn() { return battleStore.state.manaSpentTurn; },
     get firstCardPlayed() { return battleStore.state.firstCardPlayed; },
-    
-    get tempStrDebuff() { return battleStore.state.tempStrDebuff; },
-    set tempStrDebuff(val) { battleStore.state.tempStrDebuff = val; },
 
     // Relic proxies
     get lastCardType() { return battleStore.state.relicState.lastCardType; },
@@ -57,10 +58,38 @@ export const battle = {
 
     tm: new TimerManager(),
 
+    registerHooks() {
+        // 清空旧钩子 (为了安全，虽然 HookManager.listeners 是全局的，但每次战斗可能重新注册比较清晰? 
+        // 或者我们假设 HookManager 是单例，不仅服务于 Battle，也服务于 Map? 
+        // 目前它只在 Battle.js 用。我们可以先清空。)
+        HookManager.listeners = {}; 
+
+        // 1. 注册遗物钩子
+        gameStore.relics.forEach(rKey => {
+            const relic = RELICS[rKey];
+            if (relic && relic.hooks) {
+                Object.keys(relic.hooks).forEach(hookName => {
+                    HookManager.register(hookName, `relic_${rKey}`, relic.hooks[hookName]);
+                });
+            }
+        });
+
+        // 2. 注册角色被动钩子
+        gameStore.partyRoles.forEach(roleKey => {
+            const role = ROLES[roleKey];
+            if (role && role.hooks) {
+                Object.keys(role.hooks).forEach(hookName => {
+                    HookManager.register(hookName, `role_${roleKey}`, role.hooks[hookName]);
+                });
+            }
+        });
+    },
+
     reset() {
         this.tm.clearAll();
         events.emit('clear-log');
         battleStore.reset();
+        this.registerHooks(); // 重新注册钩子
     },
 
     getFrontAlly() { 
@@ -76,21 +105,10 @@ export const battle = {
         if (!card) return 0;
         let cost = card.cost;
         
-        // Flutist Passive: First card each turn costs 0
-        if (!this.firstCardPlayed && gameStore.partyRoles.includes('flutist')) {
-            return 0;
-        }
+        // 使用 Hook 系统计算费用
+        cost = HookManager.processValue('modifyCardCost', cost, { battle: this, card });
         
-        // Paganini's Broken String: First Attack costs -1
-        if (!this.firstCardPlayed && card.type === 'atk' && gameStore.relics.includes('paganini_string')) {
-            cost = Math.max(0, cost - 1);
-        }
-
-        // Conductor Passive: Duo/Trio cards cost -1
-        if ((card.type === 'duo' || card.type === 'trio') && gameStore.partyRoles.includes('conductor')) {
-            cost = Math.max(0, cost - 1);
-        }
-        return cost;
+        return Math.max(0, cost);
     },
 
     isCardPlayable(card) {
@@ -118,6 +136,13 @@ export const battle = {
         battleStore.setPhase('PLAYER');
         battleStore.nextTurn(); // Increments turnCount, resets stats
         
+        if (this.turnCount === 1) {
+             // 战斗开始时的钩子 (例如：大提琴手护盾，指挥棒)
+             await HookManager.trigger('onBattleStart', { battle: this });
+             
+             // 兼容旧的 init 逻辑 (如 Cellist 已经在 Roles hook 里处理了)
+        }
+        
         // --- 护盾衰减逻辑 (移至此处，确保在敌人攻击之后结算) ---
         // 仅在第 2 回合及以后执行衰减（第 1 回合为初始状态，不衰减）
         if (this.turnCount > 1) {
@@ -133,11 +158,12 @@ export const battle = {
 
         events.emit('log', { msg: `=== 第 ${this.turnCount} 回合 ===`, type: 'turn' });
 
+        this.allies.forEach(a => StatusManager.processTurnStart(a));
+
         battleStore.resetMana();
-        if (this.turnCount === 1 && gameStore.relics.includes('baton')) {
-            battleStore.modifyMana(1);
-            events.emit('toast', "指挥棒: 灵感+1");
-        }
+        
+        // 触发回合开始钩子
+        await HookManager.trigger('onTurnStart', { battle: this });
 
         document.getElementById('btn-end').disabled = true; // 初始禁用，等待抽牌结束
         await this.drawCards(this.manaData.draw);
@@ -246,173 +272,97 @@ export const battle = {
         const id = this.hand[idx];
         const card = window.CARDS[id];
         
-        const cost = this.getCardCost(id);
+                const cost = this.getCardCost(id);
+                
+                // Use Store to record play stats
+                battleStore.recordCardPlay(card, cost);
+                
+                // --- 触发卡牌打出动画 ---
+                events.emit('animate-card-play', { card, handIndex: idx });
         
-        // 视觉反馈：如果是灵风行者的被动生效
-        if (!this.firstCardPlayed && gameStore.partyRoles.includes('flutist') && card.cost > 0) {
-            events.emit('float-text', { text: "灵风：0费出牌", targetId: `hand`, color: '#4dabf7' });
-        }
-
-        // Use Store to record play stats
-        battleStore.recordCardPlay(card, cost);
-        
-        // --- 触发卡牌打出动画 ---
-        // 在逻辑移除前通知 UI 播放动画，让 UI 克隆一个残影去飞
-        events.emit('animate-card-play', { card, handIndex: idx });
-
-        // --- 特殊逻辑预处理 ---
-        // 尾声：需要在弃牌前计算手牌数（包含自身）
-        let bonusVal = 0;
-        if (card.eff === 'hand_scale') {
-            // 计算当前手牌数（包含这张牌本身，因为还没弃掉）
-            bonusVal = this.hand.length * 3; 
-        }
-
-        // Move card from Hand to Discard
-        const h = this.hand;
-        h.splice(idx, 1); 
-        battleStore.setHand(h);
-        
-        const d = this.discard;
-        d.push(id);
-        battleStore.setDiscard(d);
-
-        this.deselect();
-        
-        events.emit('log', { msg: `打出: <b>${card.name}</b>`, type: 'card' });
-
-        // 音效提前播放
-        if (card.eff === 'stun') events.emit('play-sound', 'assets/特大鼓重击.mp3');
-        if (card.eff === 'catastrophe' || card.name === '毁灭交响') events.emit('play-sound', 'assets/巨大轰鸣爆炸.mp3');
-        if (card.name === '休止符' || card.name === '起拍') events.emit('play-sound', 'assets/BGM/accordion-attack.wav');
-        if (card.name === '变奏' || card.name === '拨奏') events.emit('play-sound', 'assets/BGM/unsheathed-blade.ogg');
-        if (card.name === '急板' || card.name === '运弓') events.emit('play-sound', 'assets/BGM/sword-01.wav');
-        if (card.name === '震荡号角' || card.name === '高爆音符') events.emit('play-sound', 'assets/BGM/shipboard_railgun.mp3');
-        if (card.name === '热情' || card.name === '尾声') events.emit('play-sound', 'assets/BGM/horror-piano-chord.mp3');
-        if (card.name === '不协和') events.emit('play-sound', 'assets/BGM/violin-scare.wav');
-        if (card.name === '低吟' || card.name === '重奏' || card.name === '琴弦壁垒') events.emit('play-sound', 'assets/BGM/piano-string-glissando-low-a.wav');
-
-        let triggers = 1;
-        // 检测任何带 atk 标签的牌
-        // Note: attacksPlayed is already updated in recordCardPlay, but logic here checks if it was 0 BEFORE play
-        // Wait, recordCardPlay updates it instantly. 
-        // We need to check if this was the *first* attack.
-        // Actually, attacksPlayed increments. If current is 1, it means this was the first.
-        if (card.tag === 'atk' && gameStore.relics.includes('metronome') && this.attacksPlayed === 1) {
-            triggers = 2;
-            events.emit('toast', "节拍器: 双重奏!");
-        }
-        
-        if (card.tag === 'atk') {
-            if (gameStore.relics.includes('rosin')) {
-                // 如果是单体，给目标。如果是 AOE，给所有人
-                if (card.tag === 'aoe') {
-                    this.enemies.forEach(e => e.buffs.vuln += 1);
-                } else {
-                    const e = this.enemies[targetIdx];
-                    if (e) e.buffs.vuln += 1;
+                // --- 特殊逻辑预处理 ---
+                let bonusVal = 0;
+                if (card.eff === 'hand_scale') {
+                    bonusVal = this.hand.length * 3; 
                 }
-            }
-        }
-
-        let caster = this.allies.find(a => a.role === card.owner);
-        if(!caster) caster = this.getFrontAlly();
-
-        // --- 播放角色动作动画 (攻击/技能) ---
-        // [Disabled] 暂时移除所有我方角色施法动画，防止立绘消失问题
-        /*
-        if (caster) {
-            const charEl = document.getElementById(`char-${caster.role}`);
-            if (charEl) {
-                // Animation logic removed
-            }
-        }
-        */
-
-        const level = gameStore.cardLevels[id] || 0;
-        let mult = 1 + (0.5 * level);
         
-        // 变奏效果：数值加成 (基础50% + 强化)
-        if (this.variationBonus > 0) {
-            mult += this.variationBonus;
-            events.emit('float-text', { text: `变奏 +${Math.round(this.variationBonus*100)}%!`, targetId: `char-${caster.role}`, color: '#f0c040' });
-            this.variationBonus = 0; // 消耗效果
-        }
-
-        let val = card.val;
+                // Move card from Hand to Discard
+                const h = this.hand;
+                h.splice(idx, 1); 
+                battleStore.setHand(h);
+                const d = this.discard;
+                d.push(id);
+                battleStore.setDiscard(d);
         
-        // 贝多芬的失聪耳蜗：HP < 30% 伤害翻倍
-        if (gameStore.relics.includes('beethoven_ear') && caster.hp < caster.maxHp * 0.3 && card.type === 'atk') {
-            val *= 2;
-            events.emit('float-text', { text: "命运咆哮!", targetId: `char-${caster.role}`, color: '#e74c3c' });
-        }
-
-        // 渐强：基础伤害 + 战斗中累计层数
-        if (card.eff === 'crescendo') {
-            val += this.crescendoStacks;
-        }
-
-        // Brass Passive: High cost cards deal +5 damage
-        if (card.cost >= 2 && gameStore.partyRoles.includes('brass') && card.type === 'atk') {
-            val += 5;
-        }
+                this.deselect();
+                
+                events.emit('log', { msg: `打出: <b>${card.name}</b>`, type: 'card' });
         
-        // Percussionist Passive: All attacks deal +2 damage
-        if (card.type === 'atk' && gameStore.partyRoles.includes('percussionist')) {
-            val += 2;
-        }
-
-        if(val > 0) val = Math.ceil(val * mult);
-
-        // 执行多次
-        // 为了确保 processing 锁在所有异步动画完成后才解开，我们需要重构这里的逻辑
-        // 我们需要等待所有的 executeCardEffect 完成
+                // 音效处理 (保留硬编码，因为这是视听表现层，暂时不移入 Hook，除非我们做 AudioManager hook)
+                if (card.eff === 'stun') events.emit('play-sound', 'assets/特大鼓重击.mp3');
+                if (card.eff === 'catastrophe' || card.name === '毁灭交响') events.emit('play-sound', 'assets/巨大轰鸣爆炸.mp3');
+                if (card.name === '休止符' || card.name === '起拍') events.emit('play-sound', 'assets/BGM/accordion-attack.wav');
+                if (card.name === '变奏' || card.name === '拨奏') events.emit('play-sound', 'assets/BGM/unsheathed-blade.ogg');
+                if (card.name === '急板' || card.name === '运弓') events.emit('play-sound', 'assets/BGM/sword-01.wav');
+                if (card.name === '震荡号角' || card.name === '高爆音符') events.emit('play-sound', 'assets/BGM/shipboard_railgun.mp3');
+                if (card.name === '热情' || card.name === '尾声') events.emit('play-sound', 'assets/BGM/horror-piano-chord.mp3');
+                if (card.name === '不协和') events.emit('play-sound', 'assets/BGM/violin-scare.wav');
+                if (card.name === '低吟' || card.name === '重奏' || card.name === '琴弦壁垒') events.emit('play-sound', 'assets/BGM/piano-string-glissando-low-a.wav');
         
-        const executionPromises = [];
-        for(let t=0; t<triggers; t++) {
-             // 我们给每次触发加一个微小的延时，让它们依次发生，但我们需要把 Promise 存起来
-             const p = new Promise(resolve => {
-                 setTimeout(async () => {
-                     await this.executeCardEffect(card, caster, val, mult, bonusVal, targetIdx);
-                     resolve();
-                 }, t * 300);
-             });
-             executionPromises.push(p);
-        }
+                let caster = this.allies.find(a => a.role === card.owner);
+                if(!caster) caster = this.getFrontAlly();
         
-        // 等待所有触发完成
-        // 注意：这里的 setTimeout 并发模型比较简单，Promise.all 可能不会按严格顺序等待内部动画
-        // 但 executeCardEffect 内部是 await 的。
-        // 为了简单起见，我们等待最长的一个 Promise 链
-        
-        await Promise.all(executionPromises);
-
-        // 帕格尼尼的断弦：首张攻击自伤
-        if (this.attacksPlayed === 1 && gameStore.relics.includes('paganini_string') && card.type === 'atk') {
-            caster.hp -= 2;
-            events.emit('float-text', { text: "-2", targetId: `char-${caster.role}`, color: '#888' });
-            if (caster.hp <= 0) { caster.hp=0; caster.dead=true; }
-        }
-
-        // 巴赫的赋格透镜
-        if (gameStore.relics.includes('bach_lens')) {
-            if (this.lastCardType === card.type) {
-                this.bachCounter++;
-                if (this.bachCounter >= 3) {
-                    await this.drawCards(1); // Ensure draw is awaited
-                    this.manaData.current++;
-                    events.emit('toast', "赋格透镜: 完美对位!");
-                    this.bachCounter = 0; // 重置还是保留？通常重置
+                // 1. 触发 onCardPlay 钩子 (可产生副作用，如自伤、双重奏标记等)
+                const hookContext = { battle: this, card, caster, targetIdx, triggers: 1 };
+                await HookManager.trigger('onCardPlay', hookContext);
+                
+                // 2. 计算数值修改
+                const level = gameStore.cardLevels[id] || 0;
+                let mult = 1 + (0.5 * level);
+                
+                // 变奏效果 (保留在 battle 逻辑中，还是移入 Hook? 它是卡牌效果带来的 Buff，类似于 Status，暂时保留)
+                if (this.variationBonus > 0) {
+                    mult += this.variationBonus;
+                    events.emit('float-text', { text: `变奏 +${Math.round(this.variationBonus*100)}%!`, targetId: `char-${caster.role}`, color: '#f0c040' });
+                    this.variationBonus = 0; 
                 }
-            } else {
-                this.lastCardType = card.type;
-                this.bachCounter = 1;
-            }
-        }
         
-        battleStore.setProcessing(false); // 解锁
-        events.emit('update-ui');
-    },
+                let val = card.val;
+                
+                // 渐强 (保留，这是卡牌特有逻辑)
+                if (card.eff === 'crescendo') {
+                    val += this.crescendoStacks;
+                }
+        
+                // 使用 Hook 修改伤害/数值 (Beethoven, Brass, Percussionist)
+                if (val > 0) {
+                     // 此时 val 还是基础值，尚未乘 mult。Hook 可以修改基础值。
+                     // 如果 Hook 想修改最终值，可能需要另一个钩子。
+                     // 我们约定 modifyDamage 修改基础值。
+                     val = HookManager.processValue('modifyDamage', val, { battle: this, card, caster });
+                     val = Math.ceil(val * mult);
+                }
+        
+                // 3. 执行卡牌效果
+                // 检查触发次数 (由 Metronome 等 Hook 修改 hookContext.triggers)
+                const executionPromises = [];
+                for(let t=0; t<hookContext.triggers; t++) {
+                     const p = new Promise(resolve => {
+                         setTimeout(async () => {
+                             await this.executeCardEffect(card, caster, val, mult, bonusVal, targetIdx);
+                             resolve();
+                         }, t * 300);
+                     });
+                     executionPromises.push(p);
+                }
+                
+                await Promise.all(executionPromises);
+        
+                // 4. 触发 onAfterCardPlay 钩子 (Bach Lens)
+                await HookManager.trigger('onAfterCardPlay', { battle: this, card, caster });
+                
+                battleStore.setProcessing(false); // 解锁
+                events.emit('update-ui');    },
 
     async executeCardEffect(card, caster, val, mult, bonusVal = 0, targetIdx = 0) {
         // 纯数据驱动逻辑 (Data-Driven)
@@ -470,12 +420,8 @@ export const battle = {
         const target = this.enemies[targetIdx];
         if (!target || target.hp <= 0) return;
 
-        // 易伤计算
-        if (target.buffs.vuln > 0) {
-            val = Math.floor(val * 1.5);
-        }
+        let dmg = StatusManager.applyIncomingDamageMods(target, val, null); // Source is null for now or could be passed
 
-        let dmg = val;
         // 护盾抵消逻辑 (非穿透伤害)
         if (!isPierce && target.block > 0) {
             let blocked = Math.min(target.block, dmg);
@@ -587,20 +533,21 @@ export const battle = {
     async enemyAction() {
         if(this.phase === 'VICTORY') return;
         
-        if(gameStore.partyRoles.includes('vocalist')) this.healAll(5);
+        await HookManager.trigger('onEnemyTurnStart', { battle: this });
 
         // 遍历所有存活敌人依次行动
         for (let i = 0; i < this.enemies.length; i++) {
             const enemy = this.enemies[i];
             if (enemy.hp <= 0) continue;
 
-            // 敌人行动开始：重置当前敌人护盾
+            // 敌人行动开始：重置当前敌人护盾 (如果后续有保留护盾的 Buff，这里需要改)
             enemy.block = 0;
+            StatusManager.processTurnStart(enemy);
             
             const spriteId = (i === 0 ? 'sprite-enemy' : `sprite-enemy-${i}`);
             const eSprite = document.getElementById(spriteId);
 
-            if (!enemy.stunned) {
+            if (!StatusManager.hasStatus(enemy, 'stunned')) {
                 let intentType = enemy.intent.type;
                 let intentVal = enemy.intent.val;
 
@@ -667,7 +614,10 @@ export const battle = {
                     
                     if(this.phase === 'VICTORY') return;
 
-                    let dmg = parseInt(intentVal) + parseInt(enemy.buffs.str || 0);
+                    let dmg = parseInt(intentVal);
+                    // 应用力量等修改
+                    dmg = StatusManager.applyOutgoingDamageMods(enemy, dmg, null);
+
                     let target = this.getFrontAlly();
                     
                     if(target) {
@@ -719,10 +669,9 @@ export const battle = {
                             if(target.hp <= 0) { 
                                 target.hp = 0; target.dead = true; target.block = 0; 
                                 events.emit('toast', `${target.name} 倒下了!`); 
-                                if (gameStore.relics.includes('mozart_quill') && !this.mozartTriggered) {
-                                    this.dmgEnemy(30, true, i); 
-                                    this.mozartTriggered = true;
-                                }
+                                
+                                await HookManager.trigger('onAllyDeath', { battle: this, victim: target });
+                                
                                 if (this.allies.every(a => a.dead)) { this.lose(); return; }
                             }
                         } else {
@@ -753,8 +702,7 @@ export const battle = {
                         }
                     } else if (intentType === 'buff' || intentType === 'buff_str') {
                         let strGain = (intentType === 'buff_str') ? 3 : 2;
-                        enemy.buffs.str += strGain;
-                        events.emit('float-text', { text: `力量+${strGain}`, targetId: spriteId, color: '#e74c3c' });
+                        StatusManager.addStatus(enemy, 'str', strGain);
                         
                         if (enemy.name === "寂静指挥家" && eSprite) {
                             eSprite.classList.remove('anim-demon-buff', 'enemy-idle-breathe');
@@ -779,7 +727,8 @@ export const battle = {
                             waitTime = 1300;
                         }
                     } else if (intentType === 'debuff') {
-                        enemy.buffs.vuln = 0;
+                        // 净化自身易伤
+                        StatusManager.removeStatus(enemy, 'vuln');
                         events.emit('float-text', { text: "净化", targetId: spriteId, color: '#fff' });
                         if (enemy.name === "寂静指挥家" && eSprite) {
                             eSprite.classList.remove('anim-demon-buff', 'enemy-idle-breathe');
@@ -797,22 +746,22 @@ export const battle = {
                 }
             } else {
                 events.emit('toast', `${enemy.name} 被冰冻!`);
-                enemy.stunned = false;
+                // 眩晕状态由 StatusManager 自动移除 (onTurnStart 移除? 或者 onTurnEnd?)
+                // 在 statuses.js 中我们定义了 onTurnStart 移除。
+                // 所以这里不需要手动 stunned = false。
                 await window.wait(800);
             }
             events.emit('update-ui');
             await window.wait(400); // 敌人间的行动间隔
         }
 
-        // 所有人行动完后
+        // 所有人行动完后，处理状态衰减
         this.enemies.forEach(e => {
-            if(e.buffs.vuln > 0) e.buffs.vuln--;
+            StatusManager.processTurnEnd(e);
         });
         
-        if (this.tempStrDebuff > 0) {
-            this.enemies.forEach(e => e.buffs.str += this.tempStrDebuff);
-            this.tempStrDebuff = 0;
-        }
+        // 移除旧的 tempStrDebuff 处理 logic
+        // if (this.tempStrDebuff > 0) ... (Removed)
 
         this.planEnemy();
         await window.wait(600);
@@ -841,10 +790,10 @@ export const battle = {
             
             // AI 智能修正 (Boss/Elite 特有逻辑)
             if (enemy.name === "寂静指挥家") {
-                if (enemy.buffs.vuln === 0) acts = acts.filter(a => a !== 'debuff');
+                if (StatusManager.getStack(enemy, 'vuln') === 0) acts = acts.filter(a => a !== 'debuff');
             }
             if (enemy.name === "恶意八音盒") {
-                if ((enemy.buffs.str || 0) >= 6) acts = acts.filter(a => a !== 'buff_str');
+                if (StatusManager.getStack(enemy, 'str') >= 6) acts = acts.filter(a => a !== 'buff_str');
             }
             
             if (acts.length === 0) acts = ['atk'];
