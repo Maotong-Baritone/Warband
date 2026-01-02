@@ -30,7 +30,7 @@ body {
 }
 
 #scene-map { 
-    background: radial-gradient(circle, rgba(20,20,30,0.9), #000), url('../assets/Background/bg.png') center/cover; 
+    background: radial-gradient(circle, rgba(20,20,30,0.9), #000), url('../assets/Background/Map_bg.png') center/cover; 
 }
 
 #scene-battle { 
