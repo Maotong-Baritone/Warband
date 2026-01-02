@@ -25,12 +25,13 @@ body {
     box-shadow: inset 0 0 200px #000; 
 }
 /* 确保其他场景也有背景，防止透视 */
-#scene-select, #scene-recruit, #scene-camp, #scene-reward, #scene-shop {
+#scene-select, #scene-recruit, #scene-reward, #scene-shop {
     background: radial-gradient(circle at center, #1a1a2e 0%, #000 100%);
 }
 
 #scene-map { 
-    background: radial-gradient(circle, rgba(20,20,30,0.9), #000), url('../assets/Background/Map_bg.png') center/cover; 
+    background: url('../assets/Background/地图界面背景-removebg-preview.png') center/cover no-repeat; 
+    background-color: #000;
 }
 
 #scene-battle { 
@@ -751,3 +752,14 @@ body {
 .anim-ally-hit {
      animation: allyHit 0.5s ease-out;
 }
+
+/* Add Camp Scene Background */
+#scene-camp {
+    background: url('../assets/Background/camp_bg.png') center/cover no-repeat;
+    box-shadow: inset 0 0 100px #000;
+}
+
+/* Battle Background Modifiers (Dynamically applied via JS or class) */
+#scene-battle.bg-boss { background-image: url('../assets/Background/Boss_battle_bg.png') !important; }
+#scene-battle.bg-elite { background-image: url('../assets/Background/Elite_battle_bg.png') !important; }
+#scene-battle.bg-normal { background-image: url('../assets/Background/bg.png') !important; }

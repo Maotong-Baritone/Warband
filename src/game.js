@@ -289,6 +289,7 @@ export const game = {
         startLevel(type, forceEnemyKeys = null) {
             try {
                 window.battle.reset();
+                UI.setBattleBackground(type); // Set background based on battle type
                 window.battle.allies.forEach(a => { if(a.role==='cellist') a.block = 8; });
                 if(gameStore.relics.includes('baton')) window.battle.manaData.current++;
     
