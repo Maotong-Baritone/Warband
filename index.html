@@ -73,6 +73,10 @@
         </div>
 
         <div id="scene-battle" class="scene">
+            <video id="battle-video" class="bg-video" autoplay loop muted playsinline style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:-1; display:none;">
+                <source src="" type="video/mp4">
+            </video>
+
             <svg id="drag-arrow-layer" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:999; pointer-events:none; overflow:visible; display:none;">
                 <defs>
                     <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
