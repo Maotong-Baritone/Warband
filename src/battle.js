@@ -319,55 +319,15 @@ export const battle = {
         if(!caster) caster = this.getFrontAlly();
 
         // --- 播放角色动作动画 (攻击/技能) ---
+        // [Disabled] 暂时移除所有我方角色施法动画，防止立绘消失问题
+        /*
         if (caster) {
             const charEl = document.getElementById(`char-${caster.role}`);
             if (charEl) {
-                const sprite = charEl.querySelector('.musician-sprite');
-                if (sprite) {
-                    let animToPlay = null;
-                    let duration = 0;
-
-                    // 1. 专属卡牌逻辑 (Exclusive Card)
-                    if (card.owner === caster.role) {
-                        // Brass: 仅攻击牌播放攻击动画
-                        if (caster.role === 'brass' && card.type === 'atk') {
-                            animToPlay = 'anim-brass-atk';
-                            duration = 800;
-                        }
-                        // Cellist: 所有专属牌 (低吟、重奏、琴弦壁垒) 播放强化动画
-                        else if (caster.role === 'cellist') {
-                            animToPlay = 'anim-cellist-buff';
-                            duration = 1200;
-                        }
-                    }
-
-                    // 2. 通用攻击逻辑 (Fallback)
-                    // 如果没有触发专属动画，且是攻击牌，播放通用攻击动作
-                    if (!animToPlay && card.type === 'atk') {
-                        animToPlay = 'anim-generic-atk';
-                        duration = 300;
-                    }
-
-                    // 执行动画
-                    if (animToPlay) {
-                        // 先移除所有可能的动画类，防止冲突
-                        sprite.classList.remove('anim-brass-atk', 'anim-generic-atk', 'anim-cellist-buff');
-                        
-                        // 暂时移除呼吸动画，防止冲突和时序问题
-                        sprite.classList.remove('idle-breathe');
-                        
-                        void sprite.offsetWidth; // 强制重绘
-                        sprite.classList.add(animToPlay);
-                        
-                        // 动画结束后清理并恢复呼吸
-                        setTimeout(() => {
-                            sprite.classList.remove(animToPlay);
-                            sprite.classList.add('idle-breathe');
-                        }, duration);
-                    }
-                }
+                // Animation logic removed
             }
         }
+        */
 
         const level = gameStore.cardLevels[id] || 0;
         let mult = 1 + (0.5 * level);
@@ -667,6 +627,18 @@ export const battle = {
 
                         eSprite.classList.remove('anim-knight-attack', 'anim-dancer-attack', 'anim-demon-cast', 'anim-bayinhe-attack', 'anim-choir-attack', 'anim-enemy-atk', 'anim-slime-atk');
                         eSprite.classList.remove('enemy-idle-breathe');
+                        
+                        // [Fix] 处理序列帧动画的背景图冲突
+                        // 只有特定敌人的专属动画是序列帧 (Sequence)，通用动画 (anim-enemy-atk) 只是位移
+                        const isSequenceAnim = (animClass !== 'anim-enemy-atk');
+                        const trueBg = `url('${enemy.sprite}')`;
+
+                        if (isSequenceAnim) {
+                            eSprite.style.backgroundImage = '';
+                        } else {
+                            eSprite.style.backgroundImage = trueBg;
+                        }
+
                         void eSprite.offsetWidth; 
                         eSprite.classList.add(animClass);
                         
@@ -675,6 +647,8 @@ export const battle = {
                         setTimeout(() => {
                             eSprite.classList.remove(animClass);
                             eSprite.classList.add('enemy-idle-breathe');
+                            // 强制恢复立绘，防止残留
+                            eSprite.style.backgroundImage = trueBg;
                         }, animDuration);
 
                         if (enemy.name === "失律卫士") events.emit('play-sound', 'assets/BGM/monster.wav');

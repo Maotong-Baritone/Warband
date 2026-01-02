@@ -733,18 +733,48 @@ export const UI = {
     clearLog() { const el = document.getElementById('battle-log'); if(el) el.innerHTML = ''; },
 
     animateCardPlay({ card, handIndex }) {
-        const handEl = document.getElementById('hand'); if (!handEl || !handEl.children[handIndex]) return;
-        const originalCard = handEl.children[handIndex]; const rect = originalCard.getBoundingClientRect();
+        const handEl = document.getElementById('hand'); 
+        // 尝试通过索引获取，或者通过 card-id 查找以增强鲁棒性
+        let originalCard = handEl && handEl.children[handIndex];
+        
+        // 如果索引找不到，尝试通过 ID 查找 (防止 UI 已经重绘导致索引失效)
+        if (!originalCard && handEl) {
+             originalCard = handEl.querySelector(`[data-card-id="${card.id}"]`);
+        }
+
+        if (!originalCard) return;
+
+        const rect = originalCard.getBoundingClientRect();
+        // 获取当前的计算样式 transform，这包含了旋转等信息
+        const computedStyle = window.getComputedStyle(originalCard);
+        const currentTransform = computedStyle.transform;
+
         const clone = originalCard.cloneNode(true);
-        clone.style.position = 'fixed'; clone.style.left = rect.left + 'px'; clone.style.top = rect.top + 'px';
-        clone.style.width = rect.width + 'px'; clone.style.height = rect.height + 'px';
-        clone.style.margin = '0'; clone.style.transform = originalCard.style.transform;
-        clone.style.zIndex = '9999'; clone.style.pointerEvents = 'none';
+        clone.style.position = 'fixed'; 
+        clone.style.left = rect.left + 'px'; 
+        clone.style.top = rect.top + 'px';
+        clone.style.width = rect.width + 'px'; 
+        clone.style.height = rect.height + 'px';
+        clone.style.margin = '0'; 
+        
+        // 关键修复：将当前的 transform 传递给 CSS 变量，供 keyframes 使用
+        // 注意：如果我们直接设置 style.transform，它会被 animation 的 0% 覆盖
+        // 所以我们在 CSS 动画中使用 var(--start-transform)
+        clone.style.setProperty('--start-transform', currentTransform !== 'none' ? currentTransform : 'scale(1)');
+        
+        // 移除原有的 transform，防止叠加干扰（虽然 animation 会覆盖，但保持清洁）
+        clone.style.transform = ''; 
+        
+        clone.style.zIndex = '9999'; 
+        clone.style.pointerEvents = 'none';
         clone.classList.remove('selected', 'card-draw-anim');
+        
         document.body.appendChild(clone);
-        void clone.offsetWidth;
+        void clone.offsetWidth; // 强制重绘
+        
         let animClass = (card.type === 'atk' || card.tag === 'atk' || card.type === 'duo') ? 'anim-card-play-atk' : 'anim-card-play-skill';
         if (card.cost >= 3 || card.type === 'trio') animClass = 'anim-card-play-power';
+        
         clone.classList.add(animClass);
         setTimeout(() => clone.remove(), 800);
     },

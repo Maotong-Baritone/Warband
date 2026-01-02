@@ -396,7 +396,7 @@ body {
 
 .enemy-hp-box { 
     width: auto;
-    position: absolute; top: -40px; 
+    position: absolute; top: -75px; /* 上移，为下方 Buff 留空间 */
     z-index: 20; text-align: center; 
     left: 50%; transform: translateX(-50%);
     white-space: nowrap;
@@ -406,7 +406,7 @@ body {
 
 /* Intent Badge */
 .intent-badge {
-    position: absolute; top: -90px; /* 配合精简后的 HP 显示位置 */
+    position: absolute; top: -130px; /* 最上方，避免遮挡 HP */
     left: 50%; transform: translateX(-50%);
     background: rgba(0,0,0,0.8); padding: 8px 20px; border: 2px solid #999; border-radius: 30px;
     display: flex; align-items: center; gap: 8px; white-space: nowrap;
@@ -418,11 +418,21 @@ body {
 
 /* Enemy Status Icons */
 .status-row {
-    position: absolute; bottom: 100%; right: 0; 
-    display: flex; gap: 5px; flex-direction: column-reverse; /* 向上堆叠 */
-    margin-bottom: 10px;
+    position: absolute; top: -35px; /* 位于 HP 条下方，Sprite 头顶上方 */
+    left: 50%; transform: translateX(-50%);
+    width: 150%; /* 允许比单位宽 */
+    display: flex; gap: 5px; flex-direction: row; /* 改为横向排列 */
+    justify-content: center; flex-wrap: wrap;
+    pointer-events: none; z-index: 25;
 }
-.status-icon { padding: 4px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+.status-icon { padding: 4px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.5); white-space: nowrap; }
+.status-badge { 
+    display: flex; align-items: center; gap: 4px; padding: 2px 8px; 
+    border-radius: 10px; font-weight: bold; font-size: 0.9em; 
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+}
+.status-badge.block { background: rgba(52, 152, 219, 0.8); color: white; border: 1px solid #2980b9; }
+.status-badge.vuln { background: rgba(230, 126, 34, 0.8); color: white; border: 1px solid #d35400; }
 
 /* ================= HAND & CARDS ================= */
 #hand {
