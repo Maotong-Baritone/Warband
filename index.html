@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>终焉乐章 v5.4: 全知之眼</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎼</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/animations.css">
+</head>
+<body>
+    <div id="game-window">
+        <div id="scene-menu" class="scene active">
+            <h1 class="game-title">终焉乐章</h1>
+            <div style="color:#aaa; letter-spacing:8px; margin-bottom:50px; font-size: 1.2em;">v5.4 全知之眼</div>
+            <button id="btn-start-game" class="btn btn-start">开始旅程</button>
+            <div style="margin-top: 20px; font-size: 0.8em; color: #666; cursor: pointer; text-decoration: underline;" onclick="game.openDebugMenu()">[ 开发者模式 / Developer Mode ]</div>
+        </div>
+
+        <div id="scene-debug" class="scene">
+            <h2 style="color:#e74c3c; margin-bottom: 20px;">开发者调试: 选择测试对象</h2>
+            <div class="char-grid" id="debug-enemy-list"></div>
+            <button class="btn btn-start" style="margin-top: 30px; background: #555;" onclick="UI.switchScene('scene-menu')">返回主菜单</button>
+        </div>
+
+        <div id="scene-select" class="scene">
+            <h2 style="color:#f0c040; letter-spacing:4px; font-size: 2em;">选择首席演奏者</h2>
+            <div class="char-grid" id="grid-start"></div>
+        </div>
+
+        <div id="scene-recruit" class="scene">
+            <h2 style="color:#4dabf7; letter-spacing:4px; font-size: 2em;">音乐厅：招募新成员</h2>
+            <div class="char-grid" id="grid-recruit"></div>
+            <div style="margin-top:40px; cursor:pointer; color:#888; border:1px solid #555; padding:8px 20px; border-radius: 4px;" onclick="game.mapSelect()">暂不招募</div>
+        </div>
+
+        <div id="scene-map" class="scene">
+            <div class="top-bar-map">
+                <div style="display:flex; gap:20px; align-items:center;">
+                    <h2 style="color:#fff; margin:0;">第 <span id="map-level-num">1</span> 乐章</h2>
+                    <div class="gold-display"><img src="assets/UI/gold_icon.png" class="gold-icon"> <span id="map-gold">0</span></div>
+                </div>
+                <div class="top-btn" onclick="game.showDeck()">🃏 卡组图鉴</div>
+            </div>
+            <!-- 地图区域 -->
+            <div id="map-scroll-area" class="map-scroll-area">
+                <div id="map-container" class="map-container">
+                    <!-- SVG 连线层 -->
+                    <svg id="map-lines"></svg>
+                    <!-- 节点层 -->
+                    <div id="map-nodes"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="scene-battle" class="scene">
+            <svg id="drag-arrow-layer" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:999; pointer-events:none; overflow:visible; display:none;">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#ff0000" />
+                    </marker>
+                </defs>
+                <path id="drag-arrow-path" d="" stroke="#ff0000" stroke-width="4" fill="none" marker-end="url(#arrowhead)" stroke-dasharray="10,5" style="filter: drop-shadow(0 0 5px rgba(255,0,0,0.5));" />
+            </svg>
+
+            <div id="prep-ui" style="display:none; width:100%; height:100%; position:absolute; z-index:90;">
+                <button id="btn-start-battle" class="btn-start-battle" onclick="battle.startActualBattle()">开始战斗</button>
+                <div class="tactic-tip">▲ 点击两个角色可互换位置（右侧为前排）</div>
+            </div>
+
+            <!-- 战斗日志 -->
+            <div id="battle-log"></div>
+
+            <div class="battle-ui">
+                <div class="top-bar">
+                    <div style="display:flex; align-items:center;">
+                        <div class="mana-box" id="mana-ui"></div>
+                        <div class="hand-limit" id="draw-ui">手牌上限: 5</div>
+                        <div class="relic-bar" id="relic-bar"></div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:20px;">
+                        <div class="gold-display"><img src="assets/UI/gold_icon.png" class="gold-icon"> <span id="battle-gold">0</span></div>
+                        <div>第 <span id="level-ui" style="color:#f0c040; font-size: 1.4em;">1</span> 乐章</div>
+                        <div class="top-btn" onclick="game.showDeck()">🃏 图鉴</div>
+                    </div>
+                </div>
+                <div class="stage">
+                    <div class="party-container" id="party-container"></div>
+                    <div class="enemy-container">
+                        <div class="status-row" id="e-status"></div>
+                        <div class="intent-badge" id="e-intent"></div>
+                        <div id="sprite-enemy" class="sprite-enemy enemy-idle-breathe" style="background-image:url('assets/monster.png')" onclick="battle.targetEnemy()"></div>
+                        <div class="enemy-hp-box">
+                            <img src="assets/UI/hp_icon.png" class="ui-icon" style="width:28px;height:28px;"> 
+                            <span id="e-hp-text" style="color:#fff; font-weight:bold; font-size:1.4em; text-shadow:0 0 5px #000;">0/0</span>
+                        </div>
+                        <div class="enemy-name" id="e-name"></div>
+                    </div>
+                </div>
+                <div id="hand"></div>
+                <button id="btn-end" class="btn-end" onclick="battle.endTurn()">结束<br>回合</button>
+                <button id="btn-cancel" style="position:absolute; bottom:160px; left:50%; transform:translateX(-50%); padding:12px 35px; background:#e74c3c; border:none; color:#fff; border-radius:30px; cursor:pointer; display:none; font-weight:bold; box-shadow: 0 5px 15px rgba(0,0,0,0.5);" onclick="battle.deselect()">取消出牌</button>
+            </div>
+        </div>
+
+        <div id="scene-camp" class="scene">
+            <div style="position:absolute; top:20px; right:40px;" class="top-btn" onclick="game.showDeck()">🃏 卡组图鉴</div>
+            <h2 style="color:#f0c040; font-size: 3em; margin-bottom: 10px;">幕后休息室</h2>
+            <div class="camp-options" id="camp-main">
+                <div class="camp-card" onclick="game.campAction('card')">
+                    <div class="camp-icon">🎼</div>
+                    <div class="camp-title">领悟新谱</div>
+                    <div class="camp-desc">获得一张队友可用的卡牌</div>
+                </div>
+                <div class="camp-card" onclick="game.campAction('upgrade')">
+                    <div class="camp-icon">✨</div>
+                    <div class="camp-title">技艺精进</div>
+                    <div class="camp-desc">强化 2 种卡牌 (全队生效)</div>
+                </div>
+                <div class="camp-card" onclick="game.campAction('heal')">
+                    <div class="camp-icon">🎻</div>
+                    <div class="camp-title">保养乐器</div>
+                    <div class="camp-desc">复活并恢复 30% 生命值</div>
+                </div>
+                <div class="camp-card" onclick="game.campAction('relic')">
+                    <div class="camp-icon">🔮</div>
+                    <div class="camp-title">寻找圣物</div>
+                    <div class="camp-desc">获得一件稀有圣物</div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="scene-shop" class="scene">
+            <div class="top-bar-map">
+                 <div style="display:flex; gap:20px; align-items:center;">
+                    <h2 style="color:#f0c040; margin:0;">神秘乐器店</h2>
+                    <div class="gold-display"><img src="assets/UI/gold_icon.png" class="gold-icon"> <span id="shop-gold">0</span></div>
+                </div>
+                <div style="display:flex; gap:20px;">
+                    <div class="top-btn" onclick="game.showDeck()">🃏 卡组图鉴</div>
+                    <div class="top-btn" onclick="game.leaveShop()">🚪 离开</div>
+                </div>
+            </div>
+            <div class="shop-container">
+                <div class="shop-section">
+                    <h3>🎼 珍稀乐谱</h3>
+                    <div class="shop-grid" id="shop-cards"></div>
+                </div>
+                <div class="shop-section">
+                    <h3>💎 传世圣物</h3>
+                    <div class="shop-grid" id="shop-relics"></div>
+                </div>
+                <div class="shop-section">
+                    <h3>🛠️ 服务</h3>
+                    <div class="shop-grid" id="shop-services"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="scene-reward" class="scene">
+            <div style="position:absolute; top:20px; right:40px;" class="top-btn" onclick="game.showDeck()">🃏 卡组图鉴</div>
+            <h2 style="color:#f0c040; font-size: 2.5em; margin-bottom: 10px;" id="reward-title">战斗胜利</h2>
+            <div id="reward-text" style="color:#aaa; margin-bottom:30px;">选择一张新乐谱</div>
+            <div class="char-grid" id="reward-list"></div>
+            <div style="margin-top:40px; cursor:pointer; padding:10px 30px; border:1px solid #555; border-radius:4px; color:#888;" 
+                 onclick="game.finishReward()" 
+                 onmouseover="this.style.color='#fff';this.style.borderColor='#fff'" 
+                 onmouseout="this.style.color='#888';this.style.borderColor='#555'">
+                 跳过
+            </div>
+        </div>
+        
+        <div id="modal-overlay" class="modal-overlay" onclick="if(event.target===this) game.closeDeck()">
+            <div class="modal-content">
+                <div class="modal-close" onclick="game.closeDeck()">×</div>
+                <div class="modal-title" id="modal-title">当前卡组</div>
+                <div class="char-grid" id="modal-card-list" style="justify-content:center; margin-top:20px;"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>

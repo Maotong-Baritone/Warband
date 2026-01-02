@@ -1,0 +1,409 @@
+/* ... existing styles ... */
+
+/* ================= 战斗动画增强 ================= */
+
+/* 角色通用待机呼吸：轻微缩放和下沉，模拟呼吸感 */
+@keyframes charIdle {
+    0%, 100% { transform: scale(1, 1) translateY(0); }
+    50% { transform: scale(1.02, 0.98) translateY(2px); }
+}
+
+.idle-breathe {
+    animation: charIdle 3s ease-in-out infinite;
+    transform-origin: bottom center;
+}
+
+/* 敌人通用待机呼吸：频率略有不同，增加错位感 */
+@keyframes enemyIdle {
+    0%, 100% { transform: scale(1, 1) translateY(0); }
+    50% { transform: scale(1.03, 0.97) translateY(3px); }
+}
+
+.enemy-idle-breathe {
+    animation: enemyIdle 3.5s ease-in-out infinite;
+    transform-origin: bottom center;
+}
+
+/* 敌人攻击动作：后退蓄力 -> 猛冲 -> 归位 */
+
+/* ================= 卡牌出牌动画 ================= */
+
+/* 攻击牌：极度夸张的打击感
+   1. 蓄力：后撤、变红、高亮
+   2. 发射：极速拉伸、撞击
+*/
+@keyframes cardPlayAtk {
+    0% { transform: scale(1) rotate(0deg); opacity: 1; }
+    /* 蓄力阶段 (0% -> 40%)：向后撤，变红，轻微抖动 */
+    20% { transform: scale(1.1) rotate(-5deg) translate(-20px, 20px); filter: brightness(1.2) sepia(1) hue-rotate(-50deg) saturate(3); } 
+    40% { transform: scale(0.9) rotate(-10deg) translate(-40px, 40px); filter: brightness(1.5) drop-shadow(0 0 20px red); }
+    
+    /* 发射阶段 (40% -> 100%)：瞬间加速，甚至产生拉伸变形 */
+    45% { transform: scale(1.5, 0.6) rotate(45deg) translate(0, 0); opacity: 1; filter: blur(2px) brightness(2); } /* 速度线变形 */
+    100% { 
+        transform: translate(300px, -400px) scale(0.2) rotate(45deg); /* 极速飞向敌人 */
+        opacity: 0;
+        filter: brightness(5); /* 撞击瞬间过曝 */
+    }
+}
+
+.anim-card-play-atk {
+    /* 使用更加激进的贝塞尔曲线：蓄力慢，发射极快 */
+    animation: cardPlayAtk 0.4s cubic-bezier(0.7, -0.4, 0.2, 1.5) forwards;
+    z-index: 9999 !important;
+    pointer-events: none;
+    transform-origin: center center;
+}
+
+/* 技能/Buff牌：向上漂浮并融入虚空，产生光晕 */
+@keyframes cardPlaySkill {
+    0% { transform: scale(1.15); filter: brightness(1.2) drop-shadow(0 0 10px #4dabf7); opacity: 1; }
+    30% { transform: scale(1.3) translateY(-30px); filter: brightness(1.4) drop-shadow(0 0 20px #4dabf7); opacity: 0.9; }
+    100% { 
+        transform: scale(1.5) translateY(-100px); 
+        opacity: 0; 
+        filter: blur(10px) brightness(2);
+    }
+}
+
+.anim-card-play-skill {
+    animation: cardPlaySkill 0.6s ease-out forwards;
+    z-index: 9999 !important;
+    pointer-events: none;
+}
+
+/* 能力/大招牌：史诗级爆发
+   1. 巨型化 + 剧烈震动
+   2. 圣光爆发 + 模拟冲击波
+*/
+@keyframes cardPlayPower {
+    0% { transform: scale(1.15); filter: brightness(1.2); }
+    /* 积蓄能量：疯狂震动 */
+    10% { transform: scale(1.3) rotate(3deg); filter: brightness(1.5) drop-shadow(0 0 20px gold); }
+    20% { transform: scale(1.4) rotate(-3deg); filter: brightness(1.8) drop-shadow(0 0 40px gold); }
+    30% { transform: scale(1.5) rotate(3deg); filter: brightness(2) drop-shadow(0 0 60px gold); }
+    /* 爆发瞬间 */
+    40% { transform: scale(2) rotate(0); opacity: 1; filter: brightness(3) contrast(200%); } 
+    100% { 
+        transform: scale(3); 
+        opacity: 0; 
+        filter: blur(20px) brightness(5); 
+    }
+}
+
+.anim-card-play-power {
+    animation: cardPlayPower 0.8s ease-out forwards;
+    z-index: 9999 !important;
+    pointer-events: none;
+    transform-origin: center center;
+}
+@keyframes enemyRush {
+    0% { transform: translateX(0) scale(1); }
+    25% { transform: translateX(40px) scale(0.95) skewX(-5deg); } 
+    45% { transform: translateX(-150px) scale(1.1); } 
+    100% { transform: translateX(0) scale(1); }
+}
+
+.anim-enemy-atk {
+    animation: enemyRush 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* --- 失律卫士专用：沉重打击动画 --- */
+@keyframes enemyRushOptimized {
+    0% { transform: translateX(0) scale(1); }
+    45% { transform: translateX(60px) scale(0.9) skewX(-10deg); filter: brightness(1.2); } 
+    52% { transform: translateX(var(--attack-dist, -280px)) scale(1.15) skewX(5deg); } 
+    80% { transform: translateX(var(--attack-dist, -280px)) scale(1.15); } 
+    100% { transform: translateX(0) scale(1); }
+}
+
+@keyframes knightSequenceOptimized {
+    0% { background-image: url('../assets/Enemies/knight_attack_1.png'); } 
+    45% { background-image: url('../assets/Enemies/knight_attack_2.png'); } 
+    59% { background-image: url('../assets/Enemies/knight_attack_3.png'); } 
+    75% { background-image: url('../assets/Enemies/knight_attack_4.png'); } 
+    92% { background-image: url('../assets/Enemies/knight.png'); }
+    100% { background-image: url('../assets/Enemies/knight.png'); }
+}
+
+.anim-knight-attack {
+    animation: 
+        enemyRushOptimized 1.2s cubic-bezier(0.5, 0, 0.2, 1),
+        knightSequenceOptimized 1.2s steps(1); 
+}
+
+/* --- 失衡舞者专用：三段式突刺动画 --- */
+@keyframes dancerMove {
+    0% { transform: translateX(0) scale(1) skewX(0); }
+    35% { transform: translateX(30px) scale(0.9) skewX(-10deg); filter: brightness(1.2); } 
+    40% { transform: translateX(calc(var(--attack-dist, -280px) * 0.4)) scale(1.2, 0.8) skewX(30deg); opacity: 0.9; }
+    45% { transform: translateX(var(--attack-dist, -280px)) scale(1.1) skewX(0); opacity: 1; } 
+    75% { transform: translateX(calc(var(--attack-dist, -280px) - 20px)) scale(1.1); } 
+    100% { transform: translateX(0) scale(1); }
+}
+
+@keyframes dancerSequence {
+    0% { background-image: url('../assets/Enemies/shihengwuzhe.png'); }
+    5% { background-image: url('../assets/Enemies/shihengwuzhe_attack_1.png'); }
+    35% { background-image: url('../assets/Enemies/shihengwuzhe_attack_2.png'); }
+    45% { background-image: url('../assets/Enemies/shihengwuzhe_attack_3.png'); }
+    85% { background-image: url('../assets/Enemies/shihengwuzhe.png'); }
+    100% { background-image: url('../assets/Enemies/shihengwuzhe.png'); }
+}
+
+.anim-dancer-attack {
+    animation: 
+        dancerMove 1.0s cubic-bezier(0.2, 0.8, 0.2, 1),
+        dancerSequence 1.0s steps(1); 
+}
+
+/* --- 寂静指挥家专用：远程施法动画 --- */
+@keyframes demonCast {
+    0% { transform: scale(1) translateY(0); }
+    20% { transform: scale(1.05) translateY(-25px); filter: brightness(1.2); }
+    50% { transform: scale(1.1) translateY(15px); filter: brightness(1.5) drop-shadow(0 0 15px purple); }
+    90% { transform: scale(1.05) translateY(10px); }
+    100% { transform: scale(1) translateY(0); }
+}
+
+@keyframes demonSequence {
+    0% { background-image: url('../assets/Enemies/demon.png'); }
+    10% { background-image: url('../assets/Enemies/demon_attack_1.png'); }
+    40% { background-image: url('../assets/Enemies/demon_attack_2.png'); }
+    55% { background-image: url('../assets/Enemies/demon_attack_3.png'); }
+    95% { background-image: url('../assets/Enemies/demon.png'); }
+    100% { background-image: url('../assets/Enemies/demon.png'); }
+}
+
+.anim-demon-cast {
+    animation: 
+        demonCast 1.5s cubic-bezier(0.4, 0, 0.2, 1),
+        demonSequence 1.5s steps(1); 
+}
+
+/* --- 恶意八音盒专用：蓄力撕咬动画 --- */
+@keyframes bayinheMove {
+    0% { transform: translateX(0) scale(1, 1); }
+    45% { transform: translateX(30px) scale(1.2, 0.8); } 
+    50% { transform: translateX(var(--attack-dist, -250px)) scale(0.8, 1.2); } 
+    55% { transform: translateX(var(--attack-dist, -250px)) scale(1.1, 0.9); }
+    85% { transform: translateX(var(--attack-dist, -250px)) scale(1, 1); }
+    100% { transform: translateX(0) scale(1, 1); }
+}
+
+@keyframes bayinheSequence {
+    0% { background-image: url('../assets/Enemies/bayinhe.png'); }
+    10% { background-image: url('../assets/Enemies/bayinhe_attack_1.png'); }
+    45% { background-image: url('../assets/Enemies/bayinhe_attack_2.png'); }
+    55% { background-image: url('../assets/Enemies/bayinhe_attack_3.png'); }
+    90% { background-image: url('../assets/Enemies/bayinhe.png'); }
+    100% { background-image: url('../assets/Enemies/bayinhe.png'); }
+}
+
+.anim-bayinhe-attack {
+    animation: 
+        bayinheMove 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55),
+        bayinheSequence 1.5s steps(1); 
+}
+
+/* --- 恶意八音盒专用：蓄力动画 --- */
+@keyframes bayinheBuffMove {
+    0% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.15) translateY(-10px); filter: brightness(1.3) sepia(1) hue-rotate(-50deg) saturate(3); box-shadow: 0 0 20px rgba(255, 0, 0, 0.5); }
+    100% { transform: scale(1); filter: brightness(1); }
+}
+
+@keyframes bayinheBuffSequence {
+    0% { background-image: url('../assets/Enemies/bayinhe.png'); }
+    10% { background-image: url('../assets/Enemies/bayinhe_attack_1.png'); } /* 使用 attack_1 作为蓄力姿态 */
+    90% { background-image: url('../assets/Enemies/bayinhe_attack_1.png'); }
+    100% { background-image: url('../assets/Enemies/bayinhe.png'); }
+}
+
+.anim-bayinhe-buff {
+    animation: 
+        bayinheBuffMove 1.2s ease-in-out,
+        bayinheBuffSequence 1.2s steps(1);
+}
+
+/* --- 杂音唱诗班专用：精神尖啸动画 --- */
+@keyframes choirMove {
+    0% { transform: scale(1); }
+    40% { transform: translateX(20px) scale(0.95); } /* 蓄势 */
+    45% { transform: translateX(-10px) scale(1.1); } /* 爆发 */
+    47% { transform: translateX(-15px) scale(1.1); }
+    50% { transform: translateX(-10px) scale(1.1); }
+    52% { transform: translateX(-15px) scale(1.1); }
+    55% { transform: translateX(-10px) scale(1.1); }
+    70% { transform: translateX(-10px) scale(1.05); }
+    100% { transform: translateX(0) scale(1); }
+}
+
+@keyframes choirSequence {
+    0% { background-image: url('../assets/Enemies/changshiban.png'); }
+    10% { background-image: url('../assets/Enemies/changshiban_attack_1.png'); }
+    40% { background-image: url('../assets/Enemies/changshiban_attack_2.png'); }
+    70% { background-image: url('../assets/Enemies/changshiban_attack_1.png'); }
+    90% { background-image: url('../assets/Enemies/changshiban.png'); }
+    100% { background-image: url('../assets/Enemies/changshiban.png'); }
+}
+
+.anim-choir-attack {
+    animation: 
+        choirMove 1.2s ease-in-out,
+        choirSequence 1.2s steps(1); 
+}
+
+/* --- 失律卫士专用：防御动画 --- */
+@keyframes knightDefendMove {
+    0% { transform: scale(1); filter: brightness(1); }
+    20% { transform: scale(1.05); filter: brightness(1.2) drop-shadow(0 0 10px #3498db); }
+    50% { transform: scale(1.05); filter: brightness(1.3) drop-shadow(0 0 20px #3498db); }
+    80% { transform: scale(1.05); filter: brightness(1.2) drop-shadow(0 0 10px #3498db); }
+    100% { transform: scale(1); filter: brightness(1); }
+}
+
+@keyframes knightDefendSequence {
+    0% { background-image: url('../assets/Enemies/knight.png'); }
+    10% { background-image: url('../assets/Enemies/knight_defend.png'); } /* 切换到防御姿态 */
+    90% { background-image: url('../assets/Enemies/knight_defend.png'); }
+    100% { background-image: url('../assets/Enemies/knight.png'); }
+}
+
+.anim-knight-defend {
+    animation: 
+        knightDefendMove 1.2s ease-in-out,
+        knightDefendSequence 1.2s steps(1);
+}
+
+/* --- 寂静指挥家专用：强化/净化动画 --- */
+@keyframes demonBuffMove {
+    0% { transform: scale(1) translateY(0); filter: brightness(1); }
+    20% { transform: scale(1.1) translateY(-15px); filter: brightness(1.3) drop-shadow(0 0 15px #8e44ad); } /* 紫色光晕 */
+    50% { transform: scale(1.15) translateY(-20px); filter: brightness(1.5) drop-shadow(0 0 25px #9b59b6); }
+    80% { transform: scale(1.05) translateY(-10px); filter: brightness(1.2) drop-shadow(0 0 10px #8e44ad); }
+    100% { transform: scale(1) translateY(0); filter: brightness(1); }
+}
+
+@keyframes demonBuffSequence {
+    0% { background-image: url('../assets/Enemies/demon.png'); }
+    10% { background-image: url('../assets/Enemies/demon_buff.png'); }
+    90% { background-image: url('../assets/Enemies/demon_buff.png'); }
+    100% { background-image: url('../assets/Enemies/demon.png'); }
+}
+
+.anim-demon-buff {
+    animation: 
+        demonBuffMove 1.5s ease-in-out,
+        demonBuffSequence 1.5s steps(1);
+}
+
+/* 我方受击动作：红光闪烁 + 剧烈震动 */
+@keyframes allyHit {
+    0% { filter: none; transform: translateX(0); }
+    10% { 
+        filter: brightness(0.6) sepia(1) hue-rotate(-50deg) saturate(5) drop-shadow(0 0 10px red); /* 变红 */
+        transform: translateX(-15px) scale(0.95); /* 被击退 */
+    }
+    30% { transform: translateX(10px); } /* 回弹 */
+    50% { transform: translateX(-5px); }
+    100% { filter: none; transform: translateX(0) scale(1); }
+}
+
+.anim-ally-hit {
+    animation: allyHit 0.5s ease-out;
+}
+
+/* --- 沉音守望者 (Cellist) 专用：强化/演奏动画 --- */
+@keyframes cellistBuffMove {
+    0% { transform: scale(1); filter: brightness(1); }
+    30% { transform: scale(1.05) translateY(-5px); filter: brightness(1.2); }
+    60% { transform: scale(1.08) translateY(-8px); filter: brightness(1.4) drop-shadow(0 0 10px #3498db); } /* 蓝色光晕 */
+    85% { transform: scale(1.02) translateY(-2px); filter: brightness(1.1); }
+    100% { transform: scale(1); filter: brightness(1); }
+}
+
+@keyframes cellistBuffSequence {
+    0% { background-image: url('../assets/Roles/cellist.png'); }
+    15% { background-image: url('../assets/Roles/cellist_buff_1.png'); }
+    45% { background-image: url('../assets/Roles/cellist_buff_2.png'); }
+    80% { background-image: url('../assets/Roles/cellist_buff_1.png'); }
+    95% { background-image: url('../assets/Roles/cellist.png'); }
+    100% { background-image: url('../assets/Roles/cellist.png'); }
+}
+
+.anim-cellist-buff {
+    animation: 
+        cellistBuffMove 1.2s ease-in-out,
+        cellistBuffSequence 1.2s steps(1); 
+}
+/* 适用于通用卡牌 (Common Deck) 或非专属技能 */
+@keyframes genericAtk {
+    0% { transform: translateX(0) scale(1); }
+    /* 爆发点: 向前突进，放大，高亮 */
+    30% { transform: translateX(20px) scale(1.1); filter: brightness(1.4) drop-shadow(0 0 5px #fff); }
+    /* 快速回弹 */
+    100% { transform: translateX(0) scale(1); }
+}
+
+.anim-generic-atk {
+    animation: genericAtk 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* 使用弹性曲线增加打击感 */
+}
+
+/* --- 破晓号手 (Brass) 专用：原地强力吹奏动画 --- */
+@keyframes brassMove {
+    0% { transform: scale(1); }
+    /* 蓄力: 稍微下蹲/后仰 */
+    20% { transform: scale(0.95, 1.05); }
+    /* 释放: 身体舒展/震动 */
+    40% { transform: scale(1.1); filter: brightness(1.2); }
+    /* 保持: 余韵 */
+    70% { transform: scale(1.05); }
+    /* 恢复 */
+    100% { transform: scale(1); }
+}
+
+@keyframes brassSequence {
+    0% { background-image: url('../assets/Roles/brass.png'); }
+    /* 举起号角/蓄力 */
+    20% { background-image: url('../assets/Roles/brass_attack_1.png'); }
+    /* 释放/攻击 */
+    40% { background-image: url('../assets/Roles/brass_attack_2.png'); }
+    /* 保持攻击姿态 */
+    80% { background-image: url('../assets/Roles/brass_attack_2.png'); }
+    /* 恢复 - 显式指定回原图 */
+    90% { background-image: url('../assets/Roles/brass.png'); }
+    100% { background-image: url('../assets/Roles/brass.png'); }
+}
+
+.anim-brass-atk {
+    animation: 
+        brassMove 0.8s ease-in-out,
+        brassSequence 0.8s steps(1); 
+}
+
+/* --- 杂音微粒 (Slime) 专用：撞击动画 --- */
+@keyframes slimeMove {
+    0% { transform: translateX(0) scale(1, 1); }
+    50% { transform: translateX(30px) scale(1.4, 0.6); filter: brightness(1.1); } 
+    55% { transform: translateX(-100px) scale(0.7, 1.5); }
+    60% { transform: translateX(var(--attack-dist, -300px)) scale(1.2, 0.8); filter: brightness(1.3); }
+    70% { transform: translateX(calc(var(--attack-dist, -300px) + 10px)) scale(1.1, 0.9); }
+    100% { transform: translateX(0) scale(1, 1); }
+}
+
+@keyframes slimeSequence {
+    0% { background-image: url('../assets/Enemies/slime.png'); }
+    45% { background-image: url('../assets/Enemies/slime.png'); }
+    50% { background-image: url('../assets/Enemies/slime_attack_1.png'); }
+    60% { background-image: url('../assets/Enemies/slime_attack_2.png'); }
+    75% { background-image: url('../assets/Enemies/slime_attack_2.png'); }
+    90% { background-image: url('../assets/Enemies/slime.png'); }
+    100% { background-image: url('../assets/Enemies/slime.png'); }
+}
+
+.anim-slime-atk {
+    animation: 
+        slimeMove 1.0s cubic-bezier(0.45, 0.05, 0.55, 0.95),
+        slimeSequence 1.0s steps(1); 
+}

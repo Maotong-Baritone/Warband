@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>动画测试：恶意八音盒序列帧 (Bayinhe)</title>
+<style>
+    body {
+        background-color: #1a1a1a;
+        color: #fff;
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+    }
+
+    .test-stage {
+        width: 800px;
+        height: 400px;
+        border: 2px solid #444;
+        background-color: #000;
+        position: relative;
+        background-size: cover;
+        overflow: hidden;
+    }
+
+    /* === 目标 === */
+    .target-ally {
+        width: 150px;
+        height: 150px;
+        position: absolute;
+        left: 200px;
+        bottom: 50px;
+        background-image: url('assets/Roles/percussionist.png');
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center bottom;
+        transition: filter 0.1s, transform 0.1s;
+    }
+
+    /* === 攻击者：恶意八音盒 === */
+    .sprite-enemy {
+        width: 250px;
+        height: 250px;
+        position: absolute;
+        right: 150px;
+        bottom: 50px;
+        background-image: url('assets/Enemies/bayinhe.png');
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center bottom;
+        z-index: 10;
+        /* 默认朝左 */
+    }
+
+    /* === 特效 === */
+    .vfx-particle {
+        position: absolute;
+        pointer-events: none;
+        z-index: 20;
+        animation: vfxFade 0.5s ease-out forwards;
+    }
+    @keyframes vfxFade {
+        0% { opacity: 1; transform: scale(0.5); }
+        50% { transform: scale(1.2); }
+        100% { opacity: 0; transform: scale(1.5); }
+    }
+
+    /* === 八音盒攻击动画 (总时长 1.5s) === */
+    /* 
+       动作设计 (更有力量感):
+       1. 蓄力 (0-45%): 漫长的蓄力，大幅压缩。
+       2. 突袭 (45-50%): 极速爆发。
+       3. 咬合/释放 (50-85%): 长时间的撕咬停顿，展示破坏力。
+       4. 返回 (85-100%): 快速归位。
+    */
+
+    @keyframes bayinheMove {
+        0% { transform: translateX(0) scale(1, 1); }
+        
+        /* 蓄力: 更加漫长，大幅压缩，稍微后退更多 */
+        45% { transform: translateX(30px) scale(1.2, 0.8); } 
+        
+        /* 突袭: 瞬间爆发，冲到目标面前，拉伸 */
+        50% { transform: translateX(-250px) scale(0.8, 1.2); } 
+        
+        /* 撞击震动/咬合停顿: 保持更久 */
+        55% { transform: translateX(-250px) scale(1.1, 0.9); }
+        85% { transform: translateX(-250px) scale(1, 1); }
+        
+        /* 返回 */
+        100% { transform: translateX(0) scale(1, 1); }
+    }
+
+    @keyframes bayinheSequence {
+        0% { background-image: url('assets/Enemies/bayinhe.png'); }
+        
+        /* 蓄力开始 */
+        10% { background-image: url('assets/Enemies/bayinhe_attack_1.png'); }
+        
+        /* 突袭开始 (冲刺瞬间) */
+        45% { background-image: url('assets/Enemies/bayinhe_attack_2.png'); }
+        
+        /* 咬合/撕咬 (在撞击后稍作延迟展示咬合动作) */
+        55% { background-image: url('assets/Enemies/bayinhe_attack_3.png'); }
+        
+        /* 返回时恢复 */
+        90% { background-image: url('assets/Enemies/bayinhe.png'); }
+        100% { background-image: url('assets/Enemies/bayinhe.png'); }
+    }
+
+    .anim-bayinhe-attack {
+        animation: 
+            bayinheMove 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55), /* 强力弹跳曲线 */
+            bayinheSequence 1.5s steps(1); 
+    }
+
+    /* 受击动画 */
+    .anim-hit {
+        animation: shakeHit 0.4s ease-out;
+    }
+    @keyframes shakeHit {
+        0% { filter: brightness(2) sepia(1) hue-rotate(-50deg) saturate(5); transform: translateX(-10px); }
+        20% { transform: translateX(10px); }
+        40% { transform: translateX(-10px); }
+        60% { transform: translateX(5px); }
+        100% { filter: none; transform: translateX(0); }
+    }
+
+    .controls { margin-top: 20px; }
+    button { padding: 10px 30px; font-size: 18px; cursor: pointer; background: #e74c3c; color: white; border: none; border-radius: 4px; }
+    button:hover { background: #c0392b; }
+    
+    #preload { display: none; }
+</style>
+</head>
+<body>
+
+    <div class="test-stage">
+        <!-- 目标 -->
+        <div id="target-unit" class="target-ally"></div>
+        <!-- 敌人 -->
+        <div id="test-enemy" class="sprite-enemy"></div>
+    </div>
+
+    <div class="controls">
+        <button onclick="playAnim()">测试攻击 (Attack)</button>
+    </div>
+
+    <div id="preload">
+        <img src="assets/Enemies/bayinhe_attack_1.png">
+        <img src="assets/Enemies/bayinhe_attack_2.png">
+        <img src="assets/Enemies/bayinhe_attack_3.png">
+        <img src="assets/Enemies/bayinhe.png">
+        <img src="assets/vfx/vfx_Blood_Splatter.png">
+    </div>
+
+    <script>
+        function playAnim() {
+            const enemy = document.getElementById('test-enemy');
+            const target = document.getElementById('target-unit');
+            
+            // 1. 重置并播放敌人动画
+            enemy.classList.remove('anim-bayinhe-attack');
+            void enemy.offsetWidth; // Reflow
+            enemy.classList.add('anim-bayinhe-attack');
+
+            // 2. 模拟击中时刻
+            // 总时长 1.5s
+            // 突袭到达时刻为 50% -> 750ms
+            setTimeout(() => {
+                spawnVFX();
+                target.classList.remove('anim-hit');
+                void target.offsetWidth;
+                target.classList.add('anim-hit');
+            }, 750);
+        }
+
+        function spawnVFX() {
+            const stage = document.querySelector('.test-stage');
+            
+            const vfx = document.createElement('img');
+            // 改为血液飞溅特效
+            vfx.src = 'assets/vfx/vfx_Blood_Splatter.png';
+            vfx.className = 'vfx-particle';
+            
+            // 定位到目标中心
+            // target left=200, width=150 -> center=275
+            // target bottom=50, height=150 -> center from bottom=125
+            
+            vfx.style.left = (200 + 150/2 - 100) + 'px'; // 假设特效宽200
+            vfx.style.bottom = (50 + 150/2 - 100) + 'px';
+            vfx.style.width = '200px'; 
+            
+            stage.appendChild(vfx);
+            
+            setTimeout(() => vfx.remove(), 500);
+        }
+    </script>
+</body>
+</html>
