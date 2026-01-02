@@ -2,34 +2,16 @@ import { events } from './eventBus.js';
 import { EffectProcessor } from './EffectProcessor.js';
 import { gameStore } from './store/GameStore.js';
 import { battleStore } from './store/BattleStore.js';
+import { TimerManager } from './utils/TimerManager.js';
+import { TacticManager } from './TacticManager.js';
+import { UI } from './ui.js';
+import { CARDS } from './data/cards.js';
 
 // ================= 战术管理器 =================
-window.TacticManager = {
-    selectedIdx: -1,
-    handleClick(idx) {
-        if(window.battle.phase !== 'PREPARE') return;
-        if(this.selectedIdx === -1) {
-            this.selectedIdx = idx; events.emit('highlight-unit', { idx, active: true });
-        } else if(this.selectedIdx === idx) {
-            events.emit('highlight-unit', { idx, active: false }); this.selectedIdx = -1;
-        } else {
-            this.swap(this.selectedIdx, idx);
-            events.emit('highlight-unit', { idx: this.selectedIdx, active: false }); this.selectedIdx = -1;
-        }
-    },
-    swap(from, to) {
-        // Swap logic directly manipulating store arrays (via reference or setter)
-        const allies = [...battleStore.allies];
-        const temp = allies[from]; 
-        allies[from] = allies[to]; 
-        allies[to] = temp;
-        battleStore.setAllies(allies);
-        events.emit('render-battlefield');
-    }
-};
+// Moved to src/TacticManager.js
 
 // ================= 战斗系统 =================
-window.battle = {
+export const battle = {
     // --- State Proxies (The Magic) ---
     // These getters ensure that legacy code (and UI) reading 'window.battle.enemy' 
     // actually gets the data from the store.
@@ -72,7 +54,7 @@ window.battle = {
     get mozartTriggered() { return battleStore.state.relicState.mozartTriggered; },
     set mozartTriggered(val) { battleStore.state.relicState.mozartTriggered = val; },
 
-    tm: new window.TimerManager(),
+    tm: new TimerManager(),
 
     reset() {
         this.tm.clearAll();
@@ -89,22 +71,22 @@ window.battle = {
 
 
     getCardCost(cardId) {
-        const card = window.CARDS[cardId];
+        const card = CARDS[cardId];
         if (!card) return 0;
         let cost = card.cost;
         
         // Flutist Passive: First card each turn costs 0
-        if (!this.firstCardPlayed && window.game.partyRoles.includes('flutist')) {
+        if (!this.firstCardPlayed && gameStore.partyRoles.includes('flutist')) {
             return 0;
         }
         
         // Paganini's Broken String: First Attack costs -1
-        if (!this.firstCardPlayed && card.type === 'atk' && window.game.relics.includes('paganini_string')) {
+        if (!this.firstCardPlayed && card.type === 'atk' && gameStore.relics.includes('paganini_string')) {
             cost = Math.max(0, cost - 1);
         }
 
         // Conductor Passive: Duo/Trio cards cost -1
-        if ((card.type === 'duo' || card.type === 'trio') && window.game.partyRoles.includes('conductor')) {
+        if ((card.type === 'duo' || card.type === 'trio') && gameStore.partyRoles.includes('conductor')) {
             cost = Math.max(0, cost - 1);
         }
         return cost;
@@ -125,7 +107,7 @@ window.battle = {
         document.getElementById('hand').style.display = 'flex';
         document.getElementById('btn-end').style.display = 'block';
         document.getElementById('party-container').classList.remove('interactive');
-        window.TacticManager.selectedIdx = -1; 
+        TacticManager.selectedIdx = -1; 
         events.emit('render-battlefield');
         this.startTurn();
     },
@@ -338,7 +320,7 @@ window.battle = {
             }
         }
 
-        const level = window.game.cardLevels[id] || 0;
+        const level = gameStore.cardLevels[id] || 0;
         let mult = 1 + (0.5 * level);
         
         // 变奏效果：数值加成 (基础50% + 强化)
@@ -351,7 +333,7 @@ window.battle = {
         let val = card.val;
         
         // 贝多芬的失聪耳蜗：HP < 30% 伤害翻倍
-        if (window.game.relics.includes('beethoven_ear') && caster.hp < caster.maxHp * 0.3 && card.type === 'atk') {
+        if (gameStore.relics.includes('beethoven_ear') && caster.hp < caster.maxHp * 0.3 && card.type === 'atk') {
             val *= 2;
             events.emit('float-text', { text: "命运咆哮!", targetId: `char-${caster.role}`, color: '#e74c3c' });
         }
@@ -362,12 +344,12 @@ window.battle = {
         }
 
         // Brass Passive: High cost cards deal +5 damage
-        if (card.cost >= 2 && window.game.partyRoles.includes('brass') && card.type === 'atk') {
+        if (card.cost >= 2 && gameStore.partyRoles.includes('brass') && card.type === 'atk') {
             val += 5;
         }
         
         // Percussionist Passive: All attacks deal +2 damage
-        if (card.type === 'atk' && window.game.partyRoles.includes('percussionist')) {
+        if (card.type === 'atk' && gameStore.partyRoles.includes('percussionist')) {
             val += 2;
         }
 
@@ -404,7 +386,7 @@ window.battle = {
         }
 
         // 巴赫的赋格透镜
-        if (window.game.relics.includes('bach_lens')) {
+        if (gameStore.relics.includes('bach_lens')) {
             if (this.lastCardType === card.type) {
                 this.bachCounter++;
                 if (this.bachCounter >= 3) {
@@ -537,9 +519,9 @@ window.battle = {
         if(gameStore.level % 5 === 0) events.emit('toast', "BOSS 击破! 完美演出!");
         setTimeout(() => {
             if (this.enemy.type === 'battle') {
-                window.UI.switchScene('scene-reward');
+                UI.switchScene('scene-reward');
                 // 传递金币信息给 UI
-                window.UI.renderUpgradeRewards(goldGain);
+                UI.renderUpgradeRewards(goldGain);
             } else {
                 events.emit('toast', `获得金币: ${goldGain}`);
                 // 非战斗节点(虽然这里是win所以肯定刚打完)
@@ -707,7 +689,7 @@ window.battle = {
                             events.emit('toast', `${target.name} 倒下了!`); 
                             events.emit('log', { msg: `${target.name} 阵亡`, type: 'enemy' }); 
                             
-                            if (window.game.relics.includes('mozart_quill') && !this.mozartTriggered) {
+                            if (gameStore.relics.includes('mozart_quill') && !this.mozartTriggered) {
                                 this.dmgEnemy(30, true); 
                                 events.emit('toast', "安魂曲: 绝唱!");
                                 events.emit('spawn-vfx', { type: 'Psychic_Shriek', targetId: 'sprite-enemy' }); 
@@ -883,12 +865,12 @@ window.battle = {
         events.emit('toast', "乐章终结... 演出失败");
         
         setTimeout(() => {
-            window.UI.switchScene('scene-menu');
+            UI.switchScene('scene-menu');
         }, 2000);
     },
 
     planEnemy() {
-        let base = 5 + Math.floor(window.game.level * 1.5);
+        let base = 5 + Math.floor(gameStore.level * 1.5);
         
         // 获取行动列表副本
         const originalActs = window.battle.enemy.acts || ['atk'];

@@ -17,9 +17,14 @@ window.CARDS = CARDS;
 window.DUO_CARDS = DUO_CARDS;
 
 // Logic Imports
-import './ui.js';
-import './battle.js';
-import './game.js';
+import { UI } from './ui.js';
+window.UI = UI;
+
+import { battle } from './battle.js';
+window.battle = battle;
+
+import { game } from './game.js';
+window.game = game;
 
 // Wait for DOM to be ready and scripts to load
 document.addEventListener('DOMContentLoaded', () => {

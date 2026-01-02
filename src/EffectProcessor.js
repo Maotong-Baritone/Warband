@@ -1,5 +1,6 @@
 import { events } from './eventBus.js';
 import { gameStore } from './store/GameStore.js';
+import { UI } from './ui.js';
 
 /**
  * EffectProcessor 负责处理具体的卡牌效果逻辑。
@@ -56,7 +57,7 @@ export const EffectProcessor = {
             if (caster) targetId = `char-${caster.role}`;
             
             // 触发粒子特效
-            window.UI.spawnManaParticle(targetId, val);
+            UI.spawnManaParticle(targetId, val);
             
             events.emit('float-text', { text: `+${val} 灵感`, targetId, color: '#4dabf7' });
         },

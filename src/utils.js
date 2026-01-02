@@ -1,7 +1,3 @@
-window.TimerManager = class TimerManager {
-    constructor() { this.timers = []; }
-    add(fn, delay) { const t = setTimeout(fn, delay); this.timers.push(t); return t; }
-    clearAll() { this.timers.forEach(t => clearTimeout(t)); this.timers = []; }
-}
-
+// Global utility for waiting (Promisified setTimeout)
+// Keeping this global for now as it's used extensively in async functions
 window.wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));

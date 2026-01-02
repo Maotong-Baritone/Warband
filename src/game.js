@@ -1,10 +1,16 @@
 import { events } from './eventBus.js';
 import { gameStore } from './store/GameStore.js';
 import { battleStore } from './store/BattleStore.js';
+import { UI } from './ui.js';
+import { ROLES } from './data/roles.js';
+import { ENEMIES } from './data/enemies.js';
+import { RELICS } from './data/relics.js';
+import { CARDS, DUO_CARDS } from './data/cards.js';
+import { COMMON_DECK } from './data/constants.js';
 
 // js/game.js
 
-window.game = {
+export const game = {
     // 代理属性 (Getter) 以保持兼容性，但建议逐步迁移到直接使用 gameStore
     get partyRoles() { return gameStore.partyRoles; },
     get level() { return gameStore.level; },
@@ -15,8 +21,8 @@ window.game = {
     
     start() {
         events.emit('update-ui'); 
-        window.UI.switchScene('scene-select');
-        window.UI.renderCharSelect('grid-start', (key) => this.initParty(key));
+        UI.switchScene('scene-select');
+        UI.renderCharSelect('grid-start', (key) => this.initParty(key));
         events.emit('play-bgm', 'assets/BGM/Ravel_Gaspard de la Nuit.mp3');
     },
 
@@ -28,7 +34,7 @@ window.game = {
         this.mapGraph = [];
         this.currentMapPos = { layer: -1, index: -1 };
         
-        const r = window.ROLES[leaderKey];
+        const r = ROLES[leaderKey];
         // window.battle.manaData is a getter proxy to store.mana, so we modify properties, not replace the object
         window.battle.manaData.current = 3;
         window.battle.manaData.max = 3;
@@ -39,20 +45,20 @@ window.game = {
         if(leaderKey === 'violinist') window.battle.manaData.draw += 1; 
 
         battleStore.setAllies([ this.createAlly(leaderKey) ]);
-        const startDeckIds = [...window.COMMON_DECK, ...r.deck];
+        const startDeckIds = [...COMMON_DECK, ...r.deck];
         battleStore.setDeck([...startDeckIds]);
         
         if(autoNav) this.mapSelect(); 
     },
 
     createAlly(roleKey) {
-        const r = window.ROLES[roleKey];
+        const r = ROLES[roleKey];
         return { role: roleKey, name: r.name, hp: r.hp, maxHp: r.hp, block: 0, dead: false };
     },
 
     mapSelect() {
         events.emit('play-bgm', 'assets/BGM/Ravel_Gaspard de la Nuit.mp3'); 
-        window.UI.switchScene('scene-map');
+        UI.switchScene('scene-map');
         events.emit('update-ui'); 
         
         const mapNum = document.getElementById('map-level-num');
@@ -66,7 +72,7 @@ window.game = {
         }
 
         // 渲染新版地图
-        window.UI.renderMap(this.mapGraph, this.currentMapPos);
+        UI.renderMap(this.mapGraph, this.currentMapPos);
     },
 
     generateSectorMap() {
@@ -165,8 +171,8 @@ window.game = {
         } 
 
         if(type === 'recruit') {
-            window.UI.switchScene('scene-recruit');
-            setTimeout(() => window.UI.renderCharSelect('grid-recruit', (key) => this.recruit(key)), 100);
+            UI.switchScene('scene-recruit');
+            setTimeout(() => UI.renderCharSelect('grid-recruit', (key) => this.recruit(key)), 100);
         } else if(type === 'camp') {
             this.showCamp();
         } else if(type === 'shop') {
@@ -180,7 +186,7 @@ window.game = {
     shopData: { cards:[], relics:[], services:[] },
 
     showShop() {
-        window.UI.switchScene('scene-shop');
+        UI.switchScene('scene-shop');
         
         // 生成商品
         this.shopData = { cards:[], relics:[], services:[] };
@@ -201,7 +207,7 @@ window.game = {
         });
 
         // 2. 生成 1 个遗物
-        const allRelicKeys = Object.keys(window.RELICS).filter(k => !gameStore.relics.includes(k));
+        const allRelicKeys = Object.keys(RELICS).filter(k => !gameStore.relics.includes(k));
         if(allRelicKeys.length > 0) {
             const rKey = allRelicKeys[Math.floor(Math.random() * allRelicKeys.length)];
             this.shopData.relics.push({ key: rKey, price: 160, sold: false });
@@ -227,12 +233,12 @@ window.game = {
             gameStore.spendGold(item.price);
             // 强化逻辑
             gameStore.upgradeCard(item.id);
-            events.emit('toast', `强化成功: ${window.CARDS[item.id].name} +${gameStore.getCardLevel(item.id)}`);
+            events.emit('toast', `强化成功: ${CARDS[item.id].name} +${gameStore.getCardLevel(item.id)}`);
             item.sold = true;
         } else if (cat === 'relics') {
             gameStore.spendGold(item.price);
             gameStore.addRelic(item.key);
-            events.emit('toast', `购买了 ${window.RELICS[item.key].name}`);
+            events.emit('toast', `购买了 ${RELICS[item.key].name}`);
             // Note: sheet_music logic is now handled inside GameStore.addRelic
             item.sold = true;
         } else if (cat === 'services') {
@@ -253,7 +259,7 @@ window.game = {
                     return;
                 }
                 // 这是一个异步操作流程，扣款在移除后发生
-                window.UI.showDeckModal(battleStore.deck, "选择要移除的卡牌", (cardId, indexInDeck) => {
+                UI.showDeckModal(battleStore.deck, "选择要移除的卡牌", (cardId, indexInDeck) => {
                     if(gameStore.gold >= item.price) {
                         gameStore.spendGold(item.price);
                         
@@ -263,8 +269,8 @@ window.game = {
                         
                         events.emit('toast', "移除成功");
                         item.sold = true;
-                        window.UI.closeDeckModal();
-                        window.UI.renderShop(this.shopData);
+                        UI.closeDeckModal();
+                        UI.renderShop(this.shopData);
                         events.emit('update-ui');
                     }
                 });
@@ -272,7 +278,7 @@ window.game = {
             }
         }
         
-        window.UI.renderShop(this.shopData);
+        UI.renderShop(this.shopData);
         events.emit('update-ui');
     },
 
@@ -286,12 +292,12 @@ window.game = {
             window.battle.allies.forEach(a => { if(a.role==='cellist') a.block = 8; });
             if(gameStore.relics.includes('baton')) window.battle.manaData.current++;
 
-            let enemyType = window.ENEMIES.noise;
+            let enemyType = ENEMIES.noise;
             let hpMult = 1;
             
             // 强制指定敌人 (Debug模式)
-            if (forceEnemyKey && window.ENEMIES[forceEnemyKey]) {
-                enemyType = window.ENEMIES[forceEnemyKey];
+            if (forceEnemyKey && ENEMIES[forceEnemyKey]) {
+                enemyType = ENEMIES[forceEnemyKey];
                 type = 'battle'; // 默认为普通战逻辑，除非是Boss
                 if (forceEnemyKey === 'silence') { type = 'boss'; hpMult = 3; }
                 else if (['discord', 'shihengwuzhe'].includes(forceEnemyKey)) { type = 'elite'; hpMult = 1.8; }
@@ -306,14 +312,14 @@ window.game = {
                 else events.emit('play-bgm', 'assets/BGM/Bruckner.mp3');
             }
             else if (type === 'boss') { 
-                enemyType = window.ENEMIES.silence; 
+                enemyType = ENEMIES.silence; 
                 hpMult = 3; 
                 events.emit('play-bgm', 'assets/BGM/Scythian Suite.mp3'); 
             }
             else if (type === 'elite') { 
                 const elitePool = ['discord', 'shihengwuzhe'];
                 const key = elitePool[Math.floor(Math.random() * elitePool.length)];
-                enemyType = window.ENEMIES[key]; 
+                enemyType = ENEMIES[key]; 
                 hpMult = 1.8; 
                 events.emit('stop-bgm'); 
                 if (key === 'shihengwuzhe') events.emit('play-bgm', 'assets/BGM/Shostakovich_String Quartet.mp3');
@@ -322,9 +328,9 @@ window.game = {
             else { 
                 const normalPool = ['noise', 'bayinhe', 'changshiban'];
                 const key = normalPool[Math.floor(Math.random() * normalPool.length)];
-                enemyType = window.ENEMIES[key];
+                enemyType = ENEMIES[key];
                 hpMult = 1; 
-                events.emit('stop-bgm'); 
+                events.emit('stop-bgm');   
                 if (key === 'changshiban') events.emit('play-bgm', 'assets/BGM/bin ich nun frei.m4a');
                 else events.emit('play-bgm', 'assets/BGM/Bruckner.mp3'); 
             }
@@ -344,7 +350,7 @@ window.game = {
                 throw new Error("window.battle.planEnemy is missing!");
             }
 
-            window.UI.switchScene('scene-battle');
+            UI.switchScene('scene-battle');
             window.battle.phase = 'PREPARE';
             events.emit('render-battlefield');
             events.emit('update-ui');
@@ -361,7 +367,7 @@ window.game = {
     recruit(key) {
         if(gameStore.partyRoles.includes(key)) return;
         gameStore.recruitMember(key);
-        const r = window.ROLES[key];
+        const r = ROLES[key];
         
         window.battle.manaData.max += 1;
         window.battle.manaData.draw += 1;
@@ -387,20 +393,20 @@ window.game = {
     },
 
     checkDuo() {
-        window.DUO_CARDS.forEach(d => {
+        DUO_CARDS.forEach(d => {
             const hasAll = d.req.every(r => gameStore.partyRoles.includes(r));
-            if(hasAll) { 
+            if(hasAll) {   
                 // 提示
             }
         });
     },
 
     showCamp() {
-        window.UI.switchScene('scene-camp');
+        UI.switchScene('scene-camp');
     },
 
     getSmartRewards() {
-        const validCards = window.DUO_CARDS.filter(c => {
+        const validCards = DUO_CARDS.filter(c => {
             return c.req.every(r => gameStore.partyRoles.includes(r));
         }).map(c => c.id);
         
@@ -425,8 +431,8 @@ window.game = {
             });
             events.emit('toast', `休整完成`);
         } else if (type === 'card') {
-            window.UI.switchScene('scene-reward'); 
-            window.UI.renderRewards('new'); 
+            UI.switchScene('scene-reward'); 
+            UI.renderRewards('new'); 
             return; 
         } else if (type === 'upgrade') {
             let uniqueIds = [...new Set([...battleStore.deck])];
@@ -446,19 +452,19 @@ window.game = {
 
                     gameStore.upgradeCard(id);
                     const level = gameStore.getCardLevel(id);
-                    picks.push(window.CARDS[id].name + (level>0 ? `+${level}` : ''));
+                    picks.push(CARDS[id].name + (level>0 ? `+${level}` : ''));
                     uniqueIds.splice(idx, 1);
                 }
                 if (picks.length > 0) events.emit('toast', `技艺精进: ${picks.join(', ')}`);
                 else events.emit('toast', "所有技能已达化境 (Max 5)");
             }
         } else if (type === 'relic') {
-            const allKeys = Object.keys(window.RELICS);
+            const allKeys = Object.keys(RELICS);
             const available = allKeys.filter(k => !gameStore.relics.includes(k));
             if(available.length > 0) {
                 const rKey = available[Math.floor(Math.random() * available.length)];
                 gameStore.addRelic(rKey);
-                events.emit('toast', `获得圣物: ${window.RELICS[rKey].name}`);
+                events.emit('toast', `获得圣物: ${RELICS[rKey].name}`);
                 // Note: sheet_music handled in store
             } else {
                 window.battle.allies.forEach(a => { a.maxHp += 10; a.hp += 10; });
@@ -485,27 +491,27 @@ window.game = {
         } else {
             fullDeck = battleStore.deck;
         }
-        window.UI.showDeckModal(fullDeck, `当前卡组 (${fullDeck.length})`);
+        UI.showDeckModal(fullDeck, `当前卡组 (${fullDeck.length})`);
     },
 
     closeDeck() {
-        window.UI.closeDeckModal();
+        UI.closeDeckModal();
     },
     
     previewDeck(roleKey, type) {
-        const r = window.ROLES[roleKey];
+        const r = ROLES[roleKey];
         let cardList = [];
         if (type === 'start') {
-            cardList = [...window.COMMON_DECK, ...r.deck];
+            cardList = [...COMMON_DECK, ...r.deck];
         } else {
             cardList = [...r.deck];
         }
-        window.UI.showDeckModal(cardList, `${r.name} - 技能预览`);
+        UI.showDeckModal(cardList, `${r.name} - 技能预览`);
     },
 
     // ================= 开发者模式 =================
     openDebugMenu() {
-        window.UI.switchScene('scene-debug');
+        UI.switchScene('scene-debug');
         const el = document.getElementById('debug-enemy-list');
         el.innerHTML = '';
         
@@ -514,8 +520,8 @@ window.game = {
             this.initParty('pianist', false); // 默认钢琴家领队, 不跳转
         }
 
-        Object.keys(window.ENEMIES).forEach(key => {
-            const e = window.ENEMIES[key];
+        Object.keys(ENEMIES).forEach(key => {
+            const e = ENEMIES[key];
             const d = document.createElement('div');
             d.className = 'char-card';
             d.style.height = 'auto';

@@ -1,10 +1,14 @@
 import { events } from './eventBus.js';
 import { gameStore } from './store/GameStore.js';
 import { battleStore } from './store/BattleStore.js';
+import { TacticManager } from './TacticManager.js';
+import { ROLES } from './data/roles.js';
+import { RELICS } from './data/relics.js';
+import { CARDS } from './data/cards.js';
 
 // js/ui.js
 
-window.UI = {
+export const UI = {
     // 切换场景
     switchScene(id) {
         document.querySelectorAll('.scene').forEach(e => e.classList.remove('active'));
@@ -16,9 +20,9 @@ window.UI = {
         const el = document.getElementById(elId); 
         if(!el) return;
         el.innerHTML = '';
-        Object.keys(window.ROLES).forEach(key => {
+        Object.keys(ROLES).forEach(key => {
             if(elId === 'grid-recruit' && gameStore.partyRoles.includes(key)) return;
-            const r = window.ROLES[key];
+            const r = ROLES[key];
             const d = document.createElement('div');
             d.className = 'char-card';
             
@@ -55,7 +59,7 @@ window.UI = {
             const unit = document.createElement('div');
             unit.className = 'char-unit';
             unit.id = `char-${a.role}`;
-            unit.onclick = () => window.TacticManager.handleClick(i);
+            unit.onclick = () => TacticManager.handleClick(i);
             unit.style.zIndex = i + 1; 
             
             // 注意：这里使用了 div 的 background-image，无法直接用 onerror。
@@ -70,7 +74,7 @@ window.UI = {
                         <div class="block-val" id="block-val-${a.role}"></div>
                     </div>
                 </div>
-                <div class="musician-sprite idle-breathe" style="background-image:url('${window.ROLES[a.role].sprite}'); animation-delay: ${i * 0.4}s"></div>
+                <div class="musician-sprite idle-breathe" style="background-image:url('${ROLES[a.role].sprite}'); animation-delay: ${i * 0.4}s"></div>
             `;
             con.appendChild(unit);
         });
@@ -96,7 +100,7 @@ window.UI = {
             document.getElementById('reward-text').innerText = "选择一张加入牌组 (若已有则强化)";
             const keys = window.game.getSmartRewards(); 
             for(let k of keys) {
-                const c = window.CARDS[k];
+                const c = CARDS[k];
                 const d = document.createElement('div'); d.className='char-card'; d.style.height='250px';
                 const isOwned = battleStore.deck.includes(parseInt(k));
                 let desc = c.desc;
@@ -153,7 +157,7 @@ window.UI = {
                 pool.splice(randIdx, 1);
         }
         picks.forEach(id => {
-            const c = window.CARDS[id];
+            const c = CARDS[id];
             const d = document.createElement('div'); d.className = 'char-card'; d.style.height='250px';
             const currentLv = gameStore.getCardLevel(id);
             const nextLv = currentLv + 1;
@@ -354,7 +358,7 @@ window.UI = {
 
         // Cards (Upgrades)
         shopData.cards.forEach((item, idx) => {
-            const c = window.CARDS[item.id];
+            const c = CARDS[item.id];
             const d = document.createElement('div');
             d.className = 'shop-item' + (item.sold ? ' sold' : '');
             
@@ -381,7 +385,7 @@ window.UI = {
         if(relicSectionTitle) relicSectionTitle.innerHTML = '<img src="assets/UI/mystery_relic_icon.png" class="icon-title"> 传世圣物';
 
         shopData.relics.forEach((item, idx) => {
-            const r = window.RELICS[item.key];
+            const r = RELICS[item.key];
             const d = document.createElement('div');
             d.className = 'shop-item' + (item.sold ? ' sold' : '');
             d.innerHTML = `
@@ -430,7 +434,7 @@ window.UI = {
 
         listToRender.forEach((item) => {
             const id = item.id;
-            const c = window.CARDS[id];
+            const c = CARDS[id];
             const d = document.createElement('div'); 
             d.className = 'card-display'; 
             if (c.type === 'duo') d.classList.add('duet');
@@ -557,8 +561,8 @@ window.UI = {
             rBar.innerHTML = '';
             gameStore.relics.forEach(r => {
                 const d = document.createElement('div');
-                d.className = 'relic'; d.innerText = window.RELICS[r].icon;
-                d.setAttribute('data-desc', `${window.RELICS[r].name}: ${window.RELICS[r].desc}`);
+                d.className = 'relic'; d.innerText = RELICS[r].icon;
+                d.setAttribute('data-desc', `${RELICS[r].name}: ${RELICS[r].desc}`);
                 rBar.appendChild(d);
             });
         }
@@ -671,7 +675,7 @@ window.UI = {
 
             // 2. 更新或创建节点
             handData.forEach((cardId, i) => {
-                const c = window.CARDS[cardId];
+                const c = CARDS[cardId];
                 if (!c) return;
                 
                 let d = existingChildren[i];
@@ -1017,7 +1021,7 @@ window.UI = {
                 return;
             }
             const cardId = battleStore.hand[idx];
-            const c = window.CARDS[cardId];
+            const c = CARDS[cardId];
             
             // 检查是否是需要指向目标的卡牌 (atk, debuff 等)
             // 简单判断：如果它不是AOE或Buff，通常需要指。 
@@ -1100,19 +1104,19 @@ window.UI = {
 };
 
 // Event Listeners Registration
-events.on('highlight-unit', ({ idx, active }) => window.UI.highlightUnit(idx, active));
-events.on('render-battlefield', () => window.UI.renderBattleField());
-events.on('clear-log', () => window.UI.clearLog());
-events.on('log', ({ msg, type }) => window.UI.log(msg, type));
-events.on('toast', (msg) => window.UI.toast(msg));
-events.on('float-text', ({ text, targetId, color }) => window.UI.floatText(text, targetId, color));
-events.on('play-sound', (path) => window.UI.playSound(path));
-events.on('spawn-vfx', ({ type, targetId }) => window.UI.spawnVFX(type, targetId));
-events.on('shake', () => window.UI.shake());
-events.on('update-ui', () => window.UI.update());
-events.on('play-bgm', (path) => window.UI.playBGM(path));
-events.on('stop-bgm', () => window.UI.stopBGM());
-events.on('animate-card-play', (data) => window.UI.animateCardPlay(data));
+events.on('highlight-unit', ({ idx, active }) => UI.highlightUnit(idx, active));
+events.on('render-battlefield', () => UI.renderBattleField());
+events.on('clear-log', () => UI.clearLog());
+events.on('log', ({ msg, type }) => UI.log(msg, type));
+events.on('toast', (msg) => UI.toast(msg));
+events.on('float-text', ({ text, targetId, color }) => UI.floatText(text, targetId, color));
+events.on('play-sound', (path) => UI.playSound(path));
+events.on('spawn-vfx', ({ type, targetId }) => UI.spawnVFX(type, targetId));
+events.on('shake', () => UI.shake());
+events.on('update-ui', () => UI.update());
+events.on('play-bgm', (path) => UI.playBGM(path));
+events.on('stop-bgm', () => UI.stopBGM());
+events.on('animate-card-play', (data) => UI.animateCardPlay(data));
 
 // Init Arrow System
-window.UI.initArrow();
+UI.initArrow();
