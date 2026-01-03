@@ -15,16 +15,6 @@ export const UI = {
         document.getElementById(id).classList.add('active');
     },
 
-    setBattleBackground(type) {
-        const s = document.getElementById('scene-battle');
-        if (!s) return;
-        s.classList.remove('bg-boss', 'bg-elite', 'bg-normal');
-        
-        if (type === 'boss') s.classList.add('bg-boss');
-        else if (type === 'elite') s.classList.add('bg-elite');
-        else s.classList.add('bg-normal');
-    },
-
     // 渲染角色选择界面
     renderCharSelect(elId, cb) {
         const el = document.getElementById(elId); 
