@@ -1,8 +1,6 @@
 import { events } from './eventBus.js';
 import { gameStore } from './store/GameStore.js';
 import { UI } from './ui.js';
-import { StatusManager } from './mechanics/StatusManager.js';
-import { HookManager } from './mechanics/HookManager.js';
 
 /**
  * EffectProcessor 负责处理具体的卡牌效果逻辑。
@@ -13,8 +11,8 @@ export const EffectProcessor = {
     handlers: {
         'dmg': async (context, eff, val, caster) => {
             let hits = eff.hits || 1;
-            // 使用 Hook 系统修改攻击段数
-            hits = HookManager.processValue('modifyEffectHits', hits, { battle: context, eff });
+            // 圣物：李斯特的子弹 (多段攻击次数+1)
+            if (hits > 1 && gameStore.relics.includes('liszt_bullet')) hits += 1;
             
             const targetIdx = eff._tempTargetIdx !== undefined ? eff._tempTargetIdx : 0;
             const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
@@ -74,30 +72,21 @@ export const EffectProcessor = {
             const targetId = (targetIdx === 0 ? 'sprite-enemy' : `sprite-enemy-${targetIdx}`);
 
             if (eff.id === 'stunned') {
-                StatusManager.addStatus(target, 'stunned', 1);
+                target.stunned = true;
                 events.emit('toast', eff.msg || `${target.name} 被击晕!`);
-            } else {
-                // 统一处理所有其他状态 (vuln, res, str, etc.)
-                StatusManager.addStatus(target, eff.id, val);
-                
-                // 飘字反馈
-                const isBuff = ['str', 'res', 'str_up'].includes(eff.id); // 简单判断颜色
-                let color = isBuff ? '#e74c3c' : '#e67e22'; 
-                if(eff.id === 'res') color = '#9b59b6';
-                
-                let sign = val > 0 ? '+' : '';
-                // 尝试获取中文名
-                const fromDef = StatusManager.getStack(target, eff.id); // 获取堆叠后的总数用于显示? 不，显示增量
-                // 这里我们直接硬编码一些常见的回馈，或者未来由 StatusManager 返回描述
-                let name = eff.id;
-                if(eff.id === 'vuln') name = '易伤';
-                if(eff.id === 'res') name = '共鸣';
-                if(eff.id === 'str') name = '力量';
-                
-                events.emit('float-text', { text: `${name}${sign}${val}`, targetId, color });
-                events.emit('log', { msg: `[Status] ${target.name} ${name} ${sign}${val}`, type: isBuff ? 'buff' : 'debuff' });
+            } else if (eff.id === 'vuln') {
+                target.buffs.vuln += val;
+                events.emit('float-text', { text: `易伤+${val}`, targetId, color: '#e67e22' });
+                events.emit('log', { msg: `[Debuff] ${target.name} 被施加 ${val} 层易伤`, type: 'debuff' });
+            } else if (eff.id === 'res') {
+                target.buffs.res += val;
+                events.emit('float-text', { text: `共鸣+${val}`, targetId, color: '#9b59b6' });
+                events.emit('log', { msg: `[Buff] ${target.name} 共鸣 +${val}`, type: 'buff' });
+            } else if (eff.id === 'str') {
+                target.buffs.str += val;
+                let color = val > 0 ? '#e74c3c' : '#bdc3c7';
+                events.emit('float-text', { text: `力量 ${val>0?'+':''}${val}`, targetId, color });
             }
-
             if (eff.msg && eff.id !== 'stunned') events.emit('toast', eff.msg);
         },
 

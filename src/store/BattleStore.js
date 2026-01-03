@@ -17,12 +17,8 @@ class BattleStore {
         // 洗牌逻辑
         keptDeck.sort(() => Math.random() - 0.5);
         
-        // 重置队友状态 (只清护盾和状态)
-        keptAllies.forEach(a => {
-            a.block = 0;
-            a.status = []; // Reset status for new battle if needed, or keep persistent? 
-            // Usually roguelikes keep HP but reset buffs.
-        });
+        // 重置队友状态 (只清护盾)
+        keptAllies.forEach(a => a.block = 0);
 
         this.state = {
             phase: 'IDLE',

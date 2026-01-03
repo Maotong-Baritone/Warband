@@ -7,7 +7,6 @@ import { ENEMIES } from './data/enemies.js';
 import { RELICS } from './data/relics.js';
 import { CARDS, DUO_CARDS } from './data/cards.js';
 import { COMMON_DECK } from './data/constants.js';
-import { HookManager } from './mechanics/HookManager.js';
 
 // js/game.js
 
@@ -29,7 +28,7 @@ export const game = {
 
     initParty(leaderKey, autoNav = true) {
         gameStore.initGame(leaderKey);
-        window.battle.reset(); // Reset battle store and register hooks
+        window.battle.reset(); // Reset battle store
         
         // Map System Init
         this.mapGraph = [];
@@ -41,8 +40,9 @@ export const game = {
         window.battle.manaData.max = 3;
         window.battle.manaData.draw = 5;
         
-        // Trigger hooks for initial stats (Pianist max mana, Violinist draw, etc.)
-        HookManager.trigger('onInitBattle', { battle: window.battle });
+        // 应用领队被动
+        if(leaderKey === 'pianist') window.battle.manaData.max = 4;
+        if(leaderKey === 'violinist') window.battle.manaData.draw += 1; 
 
         battleStore.setAllies([ this.createAlly(leaderKey) ]);
         const startDeckIds = [...COMMON_DECK, ...r.deck];
@@ -53,7 +53,7 @@ export const game = {
 
     createAlly(roleKey) {
         const r = ROLES[roleKey];
-        return { role: roleKey, name: r.name, hp: r.hp, maxHp: r.hp, block: 0, dead: false, status: [] };
+        return { role: roleKey, name: r.name, hp: r.hp, maxHp: r.hp, block: 0, dead: false };
     },
 
     mapSelect() {
@@ -345,8 +345,8 @@ export const game = {
                         type: type, name: e.name, sprite: e.sprite,
                         hp: Math.floor(hpBase * e.hpScale), 
                         maxHp: Math.floor(hpBase * e.hpScale), 
-                        block: 0, scale: e.scale || 1,
-                        intent: {type:'atk', val:0}, stunned:false, status: [], acts: e.act 
+                        block: 0, 
+                        intent: {type:'atk', val:0}, stunned:false, buffs:{vuln:0, res:0, str:0}, acts: e.act 
                     };
                 });
     
@@ -379,13 +379,8 @@ export const game = {
         window.battle.manaData.max += 1;
         window.battle.manaData.draw += 1;
         
-        // Update hooks
-        window.battle.registerHooks();
-        
-        // Trigger specific init logic for the new member immediately
-        if (r.hooks && r.hooks.onInitBattle) {
-            r.hooks.onInitBattle({ battle: window.battle });
-        }
+        // 应用新队员被动
+        if(key === 'violinist') window.battle.manaData.draw += 1;
 
         const currentAllies = battleStore.allies;
         currentAllies.push(this.createAlly(key));
@@ -396,7 +391,7 @@ export const game = {
         currentDeck.push(...r.deck);
         battleStore.setDeck(currentDeck);
         
-        if(key === 'vocalist') window.battle.allies.forEach(a => a.maxHp += 15); // Legacy undocumented bonus?
+        if(key === 'vocalist') window.battle.allies.forEach(a => a.maxHp += 15);
 
         this.checkDuo();
         events.emit('toast', `${r.name} 加入! 手牌上限+1`);

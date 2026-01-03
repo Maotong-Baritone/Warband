@@ -2,44 +2,23 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>终焉乐章 v5.4: 全知之眼</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎼</text></svg>">
-  <script type="module" crossorigin src="/assets/index-CKuouESt.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BYH0N9PM.css">
+<title>终焉乐章 v5.4: 全知之眼</title>
+  <script type="module" crossorigin src="/assets/index-CO_vGjBr.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BF9Iy7R8.css">
 </head>
 <body>
     <div id="game-window">
         <div id="scene-menu" class="scene active">
-            <div style="height: 150px;"></div> <!-- 占位符以保持按钮位置 -->
+            <h1 class="game-title">终焉乐章</h1>
+            <div style="color:#aaa; letter-spacing:8px; margin-bottom:50px; font-size: 1.2em;">v5.4 全知之眼</div>
             <button id="btn-start-game" class="btn btn-start">开始旅程</button>
             <div style="margin-top: 20px; font-size: 0.8em; color: #666; cursor: pointer; text-decoration: underline;" onclick="game.openDebugMenu()">[ 开发者模式 / Developer Mode ]</div>
         </div>
 
         <div id="scene-debug" class="scene">
-            <h2 style="color:#e74c3c; margin-bottom: 20px;">开发者调试: 编组与测试</h2>
-            
-            <div class="debug-container" style="display:flex; gap:30px; padding:20px; height:70vh;">
-                <!-- 我方编组 -->
-                <div class="debug-section" style="flex:1; background:rgba(0,0,0,0.5); border-radius:10px; padding:15px; overflow-y:auto;">
-                    <h3 style="color:#4dabf7; border-bottom:1px solid #4dabf7; padding-bottom:5px;">🛡️ 我方队伍</h3>
-                    <div id="debug-party-list" style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:15px;"></div>
-                    <div id="debug-role-pool" style="display:flex; flex-wrap:wrap; gap:5px; border-top:1px solid #333; padding-top:15px;"></div>
-                    <button class="btn" style="margin-top:10px; background:#c0392b; width:100%;" onclick="game.debugClearParty()">清空队伍</button>
-                </div>
-
-                <!-- 敌方编组 -->
-                <div class="debug-section" style="flex:1; background:rgba(0,0,0,0.5); border-radius:10px; padding:15px; overflow-y:auto;">
-                    <h3 style="color:#e67e22; border-bottom:1px solid #e67e22; padding-bottom:5px;">👾 待战敌人 (点击图标移除)</h3>
-                    <div id="debug-enemy-queue" style="display:flex; flex-wrap:wrap; gap:10px; min-height:100px; margin-bottom:15px; border:1px dashed #555; padding:10px;"></div>
-                    <h3 style="color:#aaa; font-size:0.9em; border-bottom:1px solid #333; padding-bottom:5px;">➕ 添加敌人</h3>
-                    <div id="debug-enemy-pool" style="display:flex; flex-wrap:wrap; gap:5px; padding-top:10px;"></div>
-                </div>
-            </div>
-
-            <div style="margin-top: 20px; display:flex; gap:20px; justify-content:center;">
-                <button class="btn btn-start" style="background: #27ae60; padding: 15px 50px;" onclick="game.debugStartBattle()">开始测试战斗</button>
-                <button class="btn btn-start" style="background: #555;" onclick="UI.switchScene('scene-menu')">返回主菜单</button>
-            </div>
+            <h2 style="color:#e74c3c; margin-bottom: 20px;">开发者调试: 选择测试对象</h2>
+            <div class="char-grid" id="debug-enemy-list"></div>
+            <button class="btn btn-start" style="margin-top: 30px; background: #555;" onclick="UI.switchScene('scene-menu')">返回主菜单</button>
         </div>
 
         <div id="scene-select" class="scene">
@@ -73,15 +52,6 @@
         </div>
 
         <div id="scene-battle" class="scene">
-            <svg id="drag-arrow-layer" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:999; pointer-events:none; overflow:visible; display:none;">
-                <defs>
-                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                        <polygon points="0 0, 10 3.5, 0 7" fill="#ff0000" />
-                    </marker>
-                </defs>
-                <path id="drag-arrow-path" d="" stroke="#ff0000" stroke-width="4" fill="none" marker-end="url(#arrowhead)" stroke-dasharray="10,5" style="filter: drop-shadow(0 0 5px rgba(255,0,0,0.5));" />
-            </svg>
-
             <div id="prep-ui" style="display:none; width:100%; height:100%; position:absolute; z-index:90;">
                 <button id="btn-start-battle" class="btn-start-battle" onclick="battle.startActualBattle()">开始战斗</button>
                 <div class="tactic-tip">▲ 点击两个角色可互换位置（右侧为前排）</div>
@@ -108,7 +78,7 @@
                     <div class="enemy-container">
                         <div class="status-row" id="e-status"></div>
                         <div class="intent-badge" id="e-intent"></div>
-                        <div id="sprite-enemy" class="sprite-enemy enemy-idle-breathe" style="background-image:url('assets/monster.png')" onclick="battle.targetEnemy()"></div>
+                        <div id="sprite-enemy" class="sprite-enemy" style="background-image:url('assets/monster.png')" onclick="battle.targetEnemy()"></div>
                         <div class="enemy-hp-box">
                             <img src="/assets/hp_icon-DtBo-lrD.png" class="ui-icon" style="width:28px;height:28px;"> 
                             <span id="e-hp-text" style="color:#fff; font-weight:bold; font-size:1.4em; text-shadow:0 0 5px #000;">0/0</span>
