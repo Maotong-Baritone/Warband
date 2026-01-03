@@ -54,7 +54,7 @@ export const BattleRenderer = {
              btnEnd.disabled = !canEnd;
         }
 
-        // 6. 手牌渲染 (使用稳定的静态布局)
+        // 6. 手牌渲染
         this.renderHand();
     },
 
@@ -189,17 +189,8 @@ export const BattleRenderer = {
             if (spriteEl) {
                 if (enemy.stunned) spriteEl.classList.add('frozen-effect');
                 else spriteEl.classList.remove('frozen-effect');
-                
-                // 修复立绘消失问题：只要不在播放攻击/特殊序列动画，就强制恢复背景图
-                const isAnimating = spriteEl.className.includes('anim-');
-                // 检查背景图是否丢失
-                const currentBg = spriteEl.style.backgroundImage;
-                
-                if (!isAnimating) {
-                    // 如果没有动画，且背景图不对（或者为空），强制恢复
-                    if (!currentBg || !currentBg.includes(enemy.sprite)) {
-                        spriteEl.style.backgroundImage = `url('${enemy.sprite}')`;
-                    }
+                if (!spriteEl.className.includes('anim-')) {
+                    spriteEl.style.backgroundImage = `url('${enemy.sprite}')`;
                 }
             }
         });
@@ -214,7 +205,7 @@ export const BattleRenderer = {
         // 基础参数配置
         const baseScale = 1.0;
         const scaleStep = 0.05; // 每向后一层，缩放减小 5%
-        const yOffsetStep = -8; // 每向后一层，向上移动 8px
+        const yOffsetStep = -8; // 每向后一层，向上移动 8px (Reduced from 15 to prevent UI overlap)
         
         // 负边距计算 (挤压算法)
         let overlapMargin = 0;
@@ -229,10 +220,41 @@ export const BattleRenderer = {
         }
 
         Array.from(units).forEach((el, index) => {
+            // 逻辑位置：0 是最前排，total-1 是最后排
+            // DOM顺序：通常 Append 顺序是从左到右
+            // 对于我方 (Left Side)：DOM[0] 是最左(后排)，DOM[last] 是最右(前排)
+            // 对于敌方 (Right Side)：DOM[0] 是最左(前排)，DOM[last] 是最右(后排)
+            
             let depthIndex; 
             if (!isEnemy) {
+                // 我方：Index 越大越靠前 (Leader 是最后一个加入 DOM 的?) 
+                // Wait, logic check: battleStore.allies order is Leader -> Member.
+                // 通常 Leader 站在最前排。
+                // 如果 CSS 是 flex-direction: row (default)
+                // Leader (idx 0) 在最左边。
+                // 假如想要 Leader 在最右边(靠近敌人)，我们需要 flex-direction: row-reverse 或者
+                // 认为 idx 0 是后排。
+                // 让我们约定：Array[0] 是队长，站在最前排（最靠近屏幕中心）。
+                // 所以我们希望 Array[0] 在最右边。
+                
+                // 但目前的 CSS 没设 row-reverse。
+                // 如果 DOM[0] 在左边，那它看起来像后排。
+                // 我们可以修改 CSS 让 container justify-content: flex-end
+                // 这样 DOM[last] 在最右边。
+                
+                // 简化方案：我们假定 Array 顺序就是站位顺序 (左->右)
+                // 我方：[后排 ... 前排] -> [敌人前排 ... 敌人后排]
+                // 这样视觉上最自然。
+                
+                // 所以：
+                // Index 0 (最左) = 最远 (Scale Small, Z Low)
+                // Index Max (最右) = 最近 (Scale Big, Z High)
+                
                 depthIndex = index; // 0..total-1.  0 is furthest.
             } else {
+                // 敌方：
+                // Index 0 (最左) = 最近 (Scale Big, Z High)
+                // Index Max (最右) = 最远 (Scale Small, Z Low)
                 depthIndex = (total - 1) - index; 
             }
 
@@ -243,8 +265,12 @@ export const BattleRenderer = {
             
             // [New] 应用体型修正与拥挤缩放
             if (isEnemy) {
+                // 获取 intrinsic scale (需要在创建 DOM 时绑定或者从 Store 获取)
+                // 简单起见，我们直接从 battleStore 获取对应索引的数据
+                // 注意：DOM 顺序必须与 Store 数组顺序一致
                 const enemyData = battleStore.enemies[index];
                 const intrinsicScale = (enemyData && enemyData.scale) ? enemyData.scale : 1.0;
+                
                 finalScale = finalScale * intrinsicScale * globalCrowdingScale;
             }
 
@@ -256,16 +282,22 @@ export const BattleRenderer = {
             
             // Margin 处理
             if (!isEnemy) {
+                 // 我方：除了第一个(最左/最后排)，其他人左边缩进
                  if (index > 0) el.style.marginLeft = `${overlapMargin}px`;
                  el.style.marginRight = '0';
             } else {
+                 // 敌方：除了第一个(最左/最前排)，其他人左边缩进 (因为是从左往右排)
+                 // 等等，敌方也是 flex row。
+                 // Unit 0, Unit 1, Unit 2
+                 // Unit 0 是前排。Unit 1 应该被 Unit 0 挡住一部分吗？
+                 // 不，后排(Unit 1) 应该被 前排(Unit 0) 挡住。
+                 // 所以 Unit 1 应该往左挤进 Unit 0 的身位。
                  if (index > 0) el.style.marginLeft = `${overlapMargin}px`;
                  el.style.marginRight = '0';
             }
         });
     },
 
-    // 还原旧版 renderHand (静态布局)
     renderHand() {
         const hEl = document.getElementById('hand'); 
         if(!hEl) return;
@@ -343,26 +375,12 @@ export const BattleRenderer = {
 
     setBattleBackground(type) {
         const s = document.getElementById('scene-battle');
-        const video = document.getElementById('battle-video');
         if (!s) return;
-        
         s.classList.remove('bg-boss', 'bg-elite', 'bg-normal');
         
-        if (type === 'boss') {
-            s.classList.add('bg-boss');
-            if (video) {
-                video.src = 'assets/Background/Boss_battle_video.mp4';
-                video.style.display = 'block';
-                video.play().catch(e => console.log("Video play failed", e));
-            }
-        } else {
-            if (video) {
-                video.pause();
-                video.style.display = 'none';
-            }
-            if (type === 'elite') s.classList.add('bg-elite');
-            else s.classList.add('bg-normal');
-        }
+        if (type === 'boss') s.classList.add('bg-boss');
+        else if (type === 'elite') s.classList.add('bg-elite');
+        else s.classList.add('bg-normal');
     },
 
     highlightUnit(idx, active) {

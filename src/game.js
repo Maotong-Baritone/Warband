@@ -346,8 +346,7 @@ export const game = {
                         hp: Math.floor(hpBase * e.hpScale), 
                         maxHp: Math.floor(hpBase * e.hpScale), 
                         block: 0, scale: e.scale || 1,
-                        intent: {type:'atk', val:0}, stunned:false, status: [], acts: e.act,
-                        data: e // Reference to static data for AI logic
+                        intent: {type:'atk', val:0}, stunned:false, status: [], acts: e.act 
                     };
                 });
     

@@ -5,7 +5,6 @@ import { battleStore } from './store/BattleStore.js';
 import { TimerManager } from './utils/TimerManager.js';
 import { StatusManager } from './mechanics/StatusManager.js';
 import { HookManager } from './mechanics/HookManager.js';
-import { EnemyAI } from './mechanics/EnemyAI.js';
 import { TacticManager } from './TacticManager.js';
 import { UI } from './ui.js';
 import { CARDS } from './data/cards.js';
@@ -781,23 +780,40 @@ export const battle = {
         }, 2000);
     },
 
-        planEnemy() {
-
-            this.enemies.forEach(enemy => {
-
-                // 调用新的 AI 引擎生成意图
-
-                enemy.intent = EnemyAI.planIntent(enemy, { 
-
-                    turnCount: this.turnCount,
-
-                    allies: this.allies 
-
-                });
-
-            });
-
-        },
+    planEnemy() {
+        this.enemies.forEach(enemy => {
+            if (enemy.hp <= 0) return;
+            
+            let base = 5 + Math.floor(gameStore.level * 1.5);
+            const originalActs = enemy.acts || ['atk'];
+            let acts = [...originalActs];
+            
+            // AI 智能修正 (Boss/Elite 特有逻辑)
+            if (enemy.name === "寂静指挥家") {
+                if (StatusManager.getStack(enemy, 'vuln') === 0) acts = acts.filter(a => a !== 'debuff');
+            }
+            if (enemy.name === "恶意八音盒") {
+                if (StatusManager.getStack(enemy, 'str') >= 6) acts = acts.filter(a => a !== 'buff_str');
+            }
+            
+            if (acts.length === 0) acts = ['atk'];
+            const act = acts[Math.floor(Math.random() * acts.length)];
+            
+            // 赋值意图
+            const intents = {
+                'atk': { type:'atk', val:base, icon:'assets/UI/attack.png' },
+                'def': { type:'def', val:0, icon:'assets/UI/Defend.png' },
+                'buff': { type:'buff', val:0, icon:'assets/UI/Mana.png' },
+                'debuff': { type:'debuff', val:0, icon:'assets/UI/Debuff.png' },
+                'atk_heavy': { type:'atk_heavy', val:Math.floor(base * 1.5), icon:'assets/UI/attack.png' },
+                'atk_vuln': { type:'atk_vuln', val:Math.floor(base * 0.8), icon:'assets/UI/Debuff.png' },
+                'buff_str': { type:'buff_str', val:0, icon:'assets/UI/Mana.png' },
+                'def_block': { type:'def_block', val:0, icon:'assets/UI/Defend.png' }
+            };
+            
+            enemy.intent = intents[act] || intents['atk'];
+        });
+    },
 
     deselect() { this.selectedCard = -1; events.emit('update-ui'); }
 };

@@ -6,10 +6,6 @@ body {
     display: flex; justify-content: center; align-items: center; height: 100vh; user-select: none;
 }
 
-/* ... (Keeping all previous styles) ... */
-/* I will append the animation to the end of style.css instead of overwriting to be safe, 
-   but since I have the full content of style.css from previous read, I can just rewrite it fully with the new animation. */
-
 #game-window {
     width: 1280px; height: 720px; position: relative;
     background: #0a0a0a; border: 2px solid #333; border-radius: 6px;
@@ -294,7 +290,6 @@ body {
     position: relative;
 }
 .card:hover { transform: translateY(-70px) scale(1.15) !important; z-index: 500 !important; margin: 0 5px; }
-.card.selected { pointer-events: none; border-color: #f0c040; box-shadow: 0 0 20px #f0c040; }
 
 /* 卡牌内部元素 */
 .card-art { height: 45%; width: 100%; object-fit: cover; background: #444; border-bottom: 3px solid #8b5e3c; }
@@ -362,10 +357,6 @@ body {
 
 .float-text { position: absolute; font-weight: bold; font-size: 2em; animation: floatUp 1s ease-out forwards; pointer-events: none; z-index: 2000; text-shadow: 2px 2px 0 #000; }
 @keyframes floatUp { 0% { opacity: 1; transform: translateY(0) scale(0.5); } 20% { transform: translateY(-20px) scale(1.2); } 100% { opacity: 0; transform: translateY(-80px) scale(1); } }
-
-/* Damage Popup */
-.damage-popup { position: absolute; font-weight: bold; pointer-events: none; z-index: 2000; text-shadow: 0 0 5px #000; white-space: nowrap; user-select: none; }
-
 .toast { position: absolute; top: 20%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 15px 40px; border-radius: 30px; border: 1px solid #666; color: #fff; font-size: 1.5em; z-index: 4000; animation: fadeInOut 2s forwards; pointer-events: none; }
 @keyframes fadeInOut { 0% { opacity: 0; top: 25%; } 20% { opacity: 1; top: 20%; } 80% { opacity: 1; } 100% { opacity: 0; } }
 
@@ -422,9 +413,3 @@ body {
 .card-display.trio .card-text { color: white; }
 
 #drag-arrow-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2000; pointer-events: none; }
-
-@keyframes dashFlow {
-    to {
-        stroke-dashoffset: -10;
-    }
-}
